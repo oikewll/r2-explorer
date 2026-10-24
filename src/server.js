@@ -12,6 +12,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import crypto from 'node:crypto'
+import zlib from 'node:zlib'
 
 // ---------- env ----------
 const {
@@ -306,6 +307,146 @@ app.get('/api/info', authGuard, async (c) => {
 
 // static frontend (public/index.html serves at /)
 app.use('/*', serveStatic({ root: './public' }))
+
+// ---------- 预览：文本 / zip ----------
+const MIME = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+  svg: 'image/svg+xml', bmp: 'image/bmp', ico: 'image/x-icon', avif: 'image/avif',
+  mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/opus',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/mp4',
+  pdf: 'application/pdf',
+}
+const TEXT_CAP = 2 * 1024 * 1024
+const ENTRY_CAP = 100 * 1024 * 1024
+
+function mimeFor(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase()
+  return MIME[ext] || 'application/octet-stream'
+}
+
+function u16(buf, off) {
+  return buf[off] | (buf[off + 1] << 8)
+}
+
+function u32(buf, off) {
+  return (buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16) | (buf[off + 3] << 24)) >>> 0
+}
+
+async function s3GetRange(bucket, key, start, end) {
+  const obj = await s3.send(
+    new GetObjectCommand({ Bucket: bucket, Key: key, Range: `bytes=${start}-${end}` })
+  )
+  return Buffer.from(await obj.Body.transformToByteArray())
+}
+
+function contentDisposition(name, download) {
+  const fname = name.split('/').pop()
+  return `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(fname)}`
+}
+
+// 文本预览代理
+app.get('/api/text', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  let res
+  try {
+    res = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+  } catch (e) {
+    const code = e?.$metadata?.httpStatusCode
+    if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
+    return c.json({ error: `HEAD failed: ${code || e.message}` }, 500)
+  }
+  if ((res.ContentLength || 0) > TEXT_CAP) return c.json({ error: '文件过大，请下载后查看' }, 413)
+  const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+  const text = await obj.Body.transformToString('utf-8')
+  return c.body(text, 200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'no-store',
+  })
+})
+
+// 列出 zip 内文件
+app.get('/api/zip', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  let size
+  try {
+    const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+    size = head.ContentLength
+  } catch (e) {
+    const code = e?.$metadata?.httpStatusCode
+    if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
+    return c.json({ error: `HEAD failed: ${code || e.message}` }, 500)
+  }
+
+  const tailLen = Math.min(size, 65536 + 65535)
+  const buf = await s3GetRange(bucket, key, size - tailLen, size - 1)
+  let eocd = -1
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (u32(buf, i) === 0x06054b50) { eocd = i; break }
+  }
+  if (eocd < 0) return c.json({ error: '不是标准的 ZIP 格式' }, 400)
+  const count = u16(buf, eocd + 10)
+  const cdSize = u32(buf, eocd + 12)
+  const cdOffset = u32(buf, eocd + 16)
+  if (count === 0xffff || cdOffset === 0xffffffff) return c.json({ error: '暂不支持 ZIP64 格式' }, 400)
+
+  const cbuf = await s3GetRange(bucket, key, cdOffset, cdOffset + cdSize - 1)
+  const entries = []
+  let dirCount = 0
+  let p = 0
+  while (p + 46 <= cbuf.length && entries.length < Math.min(count, 5000)) {
+    if (u32(cbuf, p) !== 0x02014b50) break
+    const method = u16(cbuf, p + 10)
+    const compSize = u32(cbuf, p + 20)
+    const uncompSize = u32(cbuf, p + 24)
+    const nameLen = u16(cbuf, p + 28)
+    const extraLen = u16(cbuf, p + 30)
+    const commentLen = u16(cbuf, p + 32)
+    const offset = u32(cbuf, p + 42)
+    const name = cbuf.subarray(p + 46, p + 46 + nameLen).toString('utf8')
+    if (!name.endsWith('/')) entries.push({ name, method, compSize, uncompSize, offset })
+    else dirCount++
+    p += 46 + nameLen + extraLen + commentLen
+  }
+  const fileTotal = count - dirCount
+  return c.json({ bucket, key, total: fileTotal, entries, truncated: entries.length < fileTotal })
+})
+
+// 读取 zip 内单个文件
+app.get('/api/zip-entry', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  const name = c.req.query('name')
+  const off = Number(c.req.query('off'))
+  const csize = Number(c.req.query('csize'))
+  const usize = Number(c.req.query('usize'))
+  const method = Number(c.req.query('method'))
+  const download = c.req.query('download') === '1'
+  if (!bucket || !key || !name || ![off, csize, usize, method].every(Number.isFinite)) {
+    return c.json({ error: 'missing params' }, 400)
+  }
+  if (usize > ENTRY_CAP) return c.json({ error: '文件过大，请下载整个压缩包查看' }, 413)
+
+  const lbuf = await s3GetRange(bucket, key, off, off + 29)
+  if (u32(lbuf, 0) !== 0x04034b50) return c.json({ error: 'ZIP 结构异常' }, 400)
+  const dataStart = off + 30 + u16(lbuf, 26) + u16(lbuf, 28)
+
+  let data = await s3GetRange(bucket, key, dataStart, dataStart + csize - 1)
+  if (method === 8) {
+    data = zlib.inflateRawSync(data)
+  } else if (method !== 0) {
+    return c.json({ error: `不支持的压缩算法: ${method}` }, 400)
+  }
+  return c.body(data, 200, {
+    'Content-Type': mimeFor(name),
+    'Content-Length': String(data.length),
+    'Content-Disposition': contentDisposition(name, download),
+    'Cache-Control': 'no-store',
+  })
+})
 
 serve({ fetch: app.fetch, port: Number(PORT) }, (info) => {
   console.log(`[r2-explorer] listening on http://localhost:${info.port}`)

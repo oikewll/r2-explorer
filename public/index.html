@@ -260,6 +260,132 @@
   #modal-confirm:hover { filter: brightness(1.08); }
   #modal-confirm:disabled { opacity: .45; cursor: not-allowed; }
 
+  /* ---------- viewer（文件预览） ---------- */
+  #viewer-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10, 12, 16, .82);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    z-index: 250;
+  }
+  .viewer {
+    width: 100%; max-width: 960px;
+    max-height: calc(100dvh - 40px);
+    background: var(--card);
+    border-radius: 16px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .35);
+  }
+  .viewer-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+  }
+  .viewer-title {
+    font-weight: 600; font-size: 14px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .viewer-actions { display: flex; gap: 8px; flex: none; }
+  .viewer-actions button {
+    padding: 7px 14px; border-radius: 9px; font-size: 13px; font-weight: 600;
+    transition: filter .15s, background .15s;
+  }
+  #viewer-back { background: var(--hover); color: var(--text); }
+  #viewer-download { background: var(--accent); color: #fff; display: inline-flex; align-items: center; gap: 6px; }
+  #viewer-download:hover { filter: brightness(1.08); }
+  #viewer-close { background: var(--hover); color: var(--text-2); width: 34px; padding: 7px 0; }
+  #viewer-close:hover { background: var(--danger-soft); color: var(--danger); }
+  .viewer-body {
+    flex: 1;
+    overflow: auto;
+    background: #1c1f24;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 220px;
+    position: relative;
+  }
+  .viewer-body.light { background: var(--card); }
+  .viewer-body img { max-width: 100%; max-height: calc(100dvh - 160px); object-fit: contain; }
+  .viewer-body video { max-width: 100%; max-height: calc(100dvh - 160px); }
+  .viewer-body iframe { width: 100%; height: calc(100dvh - 132px); border: none; background: #fff; }
+  .viewer-body pre {
+    width: 100%; align-self: stretch;
+    margin: 0; padding: 16px 18px;
+    color: #d7dae0; font-size: 13px; line-height: 1.6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap; word-break: break-all;
+    overflow: auto;
+  }
+  .viewer-loading { color: #9aa1ab; font-size: 14px; padding: 40px; }
+  .viewer-msg { color: #9aa1ab; font-size: 14px; padding: 40px; text-align: center; }
+
+  /* 音频播放卡 */
+  .audio-card {
+    width: 100%; max-width: 460px;
+    text-align: center;
+    color: #d7dae0;
+    padding: 20px;
+  }
+  .audio-card .cover {
+    width: 120px; height: 120px;
+    margin: 0 auto 18px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #4f6ef7, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 52px;
+  }
+  .audio-card .a-name {
+    font-weight: 600; font-size: 15px; margin-bottom: 4px;
+    color: #fff;
+    word-break: break-all;
+  }
+  .audio-card .a-sub { font-size: 12px; color: #9aa1ab; margin-bottom: 18px; }
+  .audio-card audio { width: 100%; }
+
+  /* 下载提示 */
+  .dl-prompt { text-align: center; color: #d7dae0; padding: 40px 24px; }
+  .dl-prompt .big { font-size: 52px; margin-bottom: 14px; }
+  .dl-prompt .t1 { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 6px; word-break: break-all; }
+  .dl-prompt .t2 { font-size: 13px; color: #9aa1ab; margin-bottom: 20px; }
+  .dl-prompt button {
+    background: var(--accent); color: #fff;
+    padding: 10px 24px; border-radius: 10px; font-weight: 600; font-size: 14px;
+  }
+  .dl-prompt button:hover { filter: brightness(1.08); }
+
+  /* zip 内容列表 */
+  .zip-list { width: 100%; align-self: stretch; background: var(--card); overflow: auto; }
+  .zip-head {
+    padding: 10px 16px;
+    font-size: 13px; color: var(--text-2);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--card);
+  }
+  .zip-row {
+    display: grid; grid-template-columns: 30px 1fr auto auto;
+    gap: 10px; align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    transition: background .12s;
+  }
+  .zip-row:hover { background: var(--hover); }
+  .zip-row .z-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    cursor: pointer;
+  }
+  .zip-row .z-name:hover { color: var(--accent); }
+  .zip-row .z-size { font-size: 12px; color: var(--text-2); min-width: 70px; text-align: right; }
+  .zip-row .z-act {
+    font-size: 12px; font-weight: 600;
+    padding: 4px 10px; border-radius: 7px;
+    background: var(--accent-soft); color: var(--accent);
+    min-width: 40px; text-align: center;
+  }
+  .zip-row .z-act.dl { background: var(--hover); color: var(--text-2); }
+  .zip-row .z-act.dl:hover { background: var(--danger-soft); color: var(--danger); }
+
   /* toast */
   #toast {
     position: fixed;
@@ -361,6 +487,24 @@
       <button id="modal-cancel">取 消</button>
       <button id="modal-confirm" disabled>删 除</button>
     </div>
+  </div>
+</div>
+
+<!-- 文件预览 -->
+<div id="viewer-overlay" hidden>
+  <div class="viewer">
+    <div class="viewer-head">
+      <div class="viewer-title" id="viewer-title"></div>
+      <div class="viewer-actions">
+        <button id="viewer-back" hidden>← 返回</button>
+        <button id="viewer-download">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          下载
+        </button>
+        <button id="viewer-close">✕</button>
+      </div>
+    </div>
+    <div class="viewer-body" id="viewer-body"></div>
   </div>
 </div>
 
@@ -588,7 +732,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
       </div>`
-    row.querySelector('.name').onclick = () => window.open(f.url, '_blank')
+    row.querySelector('.name').onclick = () => openFile(f)
     const copyBtn = row.querySelector('.copy-btn')
     copyBtn.onclick = async () => {
       const ok = await copyText(f.url)
@@ -680,6 +824,238 @@
   }
 
   window.addEventListener('hashchange', routeLoad)
+
+  // ---------- 文件预览 ----------
+  const IMAGE_EXT = new Set(['png','jpg','jpeg','gif','webp','svg','bmp','ico','avif'])
+  const VIDEO_EXT = new Set(['mp4','webm','m4v','mov'])
+  const AUDIO_EXT = new Set(['mp3','wav','ogg','m4a','aac','flac','opus'])
+  const TEXT_EXT = new Set(['txt','json','meta','xml','yml','yaml','js','ts','mjs','cts','css','html','htm','md','csv','log','ini','cfg','conf','sh','lua','plist','properties','version'])
+  const ZIP_EXT = new Set(['zip','apk','ipa','jar','xapk','epub'])
+
+  function categoryOf(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase()
+    if (IMAGE_EXT.has(ext)) return 'image'
+    if (VIDEO_EXT.has(ext)) return 'video'
+    if (AUDIO_EXT.has(ext)) return 'audio'
+    if (ext === 'pdf') return 'pdf'
+    if (TEXT_EXT.has(ext)) return 'text'
+    if (ZIP_EXT.has(ext)) return 'zip'
+    return null
+  }
+
+  const $v = {
+    overlay: $('viewer-overlay'),
+    title: $('viewer-title'),
+    body: $('viewer-body'),
+    back: $('viewer-back'),
+    download: $('viewer-download'),
+    close: $('viewer-close'),
+  }
+  let viewerState = null // { mode: 'file'|'zip'|'zipEntry', file, entry }
+
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function setBody(html, light) {
+    $v.body.classList.toggle('light', !!light)
+    $v.body.innerHTML = html
+  }
+
+  function openViewer(f) {
+    viewerState = { mode: 'file', file: f }
+    $v.title.textContent = f.name
+    $v.back.hidden = true
+    setBody('<div class="viewer-loading">加载中…</div>')
+    $v.overlay.hidden = false
+    document.body.style.overflow = 'hidden'
+  }
+
+  function closeViewer() {
+    $v.overlay.hidden = true
+    $v.body.innerHTML = '' // 停掉 video/audio
+    viewerState = null
+    document.body.style.overflow = ''
+  }
+
+  $v.close.onclick = closeViewer
+  $v.overlay.addEventListener('click', (e) => {
+    if (e.target === $v.overlay) closeViewer()
+  })
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$v.overlay.hidden) closeViewer()
+  })
+
+  function showDownloadPrompt(f, reason) {
+    $v.back.hidden = viewerState.mode !== 'zipEntry'
+    setBody(`
+      <div class="dl-prompt">
+        <div class="big">${extIcon(f.name)}</div>
+        <div class="t1">${esc(f.name)}</div>
+        <div class="t2">${reason || '该文件类型无法在线预览'}</div>
+        <button onclick="window.open('${viewerState.dlUrl}', '_blank')">⬇ 下载文件</button>
+      </div>`)
+  }
+
+  $v.download.onclick = () => {
+    if (viewerState && viewerState.dlUrl) window.open(viewerState.dlUrl, '_blank')
+  }
+
+  // zip 条目的代理地址（同源，支持预览/下载）
+  function zipEntryUrl(f, e, download) {
+    const q = new URLSearchParams({
+      bucket: f.bucket || currentBucket(),
+      key: f.path,
+      name: e.name,
+      off: e.offset,
+      csize: e.compSize,
+      usize: e.uncompSize,
+      method: e.method,
+      download: download ? '1' : '0',
+    })
+    return '/api/zip-entry?' + q.toString()
+  }
+
+  function textUrl(f) {
+    return '/api/text?bucket=' + encodeURIComponent(f.bucket || currentBucket()) + '&key=' + encodeURIComponent(f.path)
+  }
+
+  async function openFile(f) {
+    openViewer(f)
+    viewerState.dlUrl = f.url
+    const cat = categoryOf(f.name)
+    if (cat === 'image') {
+      setBody(`<img src="${esc(f.url)}" alt="">`, false)
+    } else if (cat === 'video') {
+      setBody(`<video src="${esc(f.url)}" controls autoplay playsinline></video>`, false)
+    } else if (cat === 'audio') {
+      setBody(`
+        <div class="audio-card">
+          <div class="cover">🎵</div>
+          <div class="a-name">${esc(f.name)}</div>
+          <div class="a-sub">${fmtSize(f.size)}</div>
+          <audio src="${esc(f.url)}" controls autoplay></audio>
+        </div>`, false)
+    } else if (cat === 'pdf') {
+      setBody(`<iframe src="${esc(f.url)}"></iframe>`, false)
+    } else if (cat === 'text') {
+      try {
+        const res = await fetch(textUrl(f))
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          showDownloadPrompt(f, data.error || '读取失败')
+          return
+        }
+        const text = await res.text()
+        let shown = text
+        if ((f.name.split('.').pop() || '').toLowerCase() === 'json') {
+          try { shown = JSON.stringify(JSON.parse(text), null, 2) } catch {}
+        }
+        setBody(`<pre>${esc(shown)}</pre>`, true)
+      } catch {
+        showDownloadPrompt(f, '读取失败')
+      }
+    } else if (cat === 'zip') {
+      await loadZipListing(f)
+    } else {
+      showDownloadPrompt(f)
+    }
+  }
+
+  // ---------- zip 内容浏览 ----------
+  async function loadZipListing(f) {
+    $v.back.hidden = true
+    setBody('<div class="viewer-loading">正在读取压缩包目录…</div>', true)
+    try {
+      const q = '/api/zip?bucket=' + encodeURIComponent(f.bucket || currentBucket()) + '&key=' + encodeURIComponent(f.path)
+      const data = await api(q)
+      viewerState.mode = 'zip'
+      viewerState.entries = data.entries
+      const total = data.entries.length
+      const rows = data.entries.map((e, i) => {
+        const cat = categoryOf(e.name)
+        const act = cat
+          ? `<span class="z-act" data-i="${i}">预览</span>`
+          : `<span class="z-act dl" data-i="${i}">下载</span>`
+        return `<div class="zip-row">
+          <div>${extIcon(e.name)}</div>
+          <div class="z-name" data-i="${i}" title="${esc(e.name)}">${esc(e.name)}</div>
+          <div class="z-size">${fmtSize(e.uncompSize)}</div>
+          <div>${act}</div>
+        </div>`
+      }).join('')
+      setBody(`
+        <div class="zip-list">
+          <div class="zip-head">${fmtNum(total)} 个文件 · 点击文件名或「预览」在线查看</div>
+          ${rows || '<div class="viewer-msg">压缩包是空的</div>'}
+        </div>`, true)
+      $v.body.querySelectorAll('.z-name, .z-act').forEach((el) => {
+        el.onclick = () => {
+          const e = data.entries[Number(el.dataset.i)]
+          if (!e) return
+          if (categoryOf(e.name)) previewZipEntry(f, e)
+          else window.open(zipEntryUrl(f, e, true), '_blank')
+        }
+      })
+    } catch (e) {
+      if (e.message === 'unauthorized') return
+      setBody(`<div class="viewer-msg">读取失败：${esc(e.message)}</div>`, true)
+    }
+  }
+
+  async function previewZipEntry(f, e) {
+    viewerState.mode = 'zipEntry'
+    viewerState.entry = e
+    viewerState.dlUrl = zipEntryUrl(f, e, true)
+    $v.title.textContent = f.name.split('/').pop() + ' / ' + e.name
+    $v.back.hidden = false
+    const cat = categoryOf(e.name)
+    const url = zipEntryUrl(f, e, false)
+    if (cat === 'image') {
+      setBody(`<img src="${esc(url)}" alt="">`, false)
+    } else if (cat === 'video') {
+      setBody(`<video src="${esc(url)}" controls playsinline></video>`, false)
+    } else if (cat === 'audio') {
+      setBody(`
+        <div class="audio-card">
+          <div class="cover">🎵</div>
+          <div class="a-name">${esc(e.name.split('/').pop())}</div>
+          <div class="a-sub">${fmtSize(e.uncompSize)} · 来自 ${esc(f.name.split('/').pop())}</div>
+          <audio src="${esc(url)}" controls autoplay></audio>
+        </div>`, false)
+    } else if (cat === 'pdf') {
+      setBody(`<iframe src="${esc(url)}"></iframe>`, false)
+    } else if (cat === 'text') {
+      setBody('<div class="viewer-loading">加载中…</div>', true)
+      try {
+        const res = await fetch(url)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          showDownloadPrompt(e, data.error || '读取失败')
+          return
+        }
+        const text = await res.text()
+        let shown = text
+        if ((e.name.split('.').pop() || '').toLowerCase() === 'json') {
+          try { shown = JSON.stringify(JSON.parse(text), null, 2) } catch {}
+        }
+        setBody(`<pre>${esc(shown)}</pre>`, true)
+      } catch {
+        showDownloadPrompt(e, '读取失败')
+      }
+    } else {
+      showDownloadPrompt({ name: e.name }, '该文件类型无法在线预览')
+    }
+  }
+
+  $v.back.onclick = () => {
+    if (viewerState && viewerState.mode === 'zipEntry' && viewerState.file) {
+      const f = viewerState.file
+      viewerState.dlUrl = f.url
+      $v.title.textContent = f.name
+      loadZipListing(f)
+    }
+  }
 
   // ---------- 删除确认 ----------
   let pendingDelete = null
