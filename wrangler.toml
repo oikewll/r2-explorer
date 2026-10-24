@@ -1,0 +1,27 @@
+name = "r2-explorer"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+# 把 HTML 作为文本模块打包进 Worker
+rules = [
+  { type = "Text", globs = ["**/*.html"] }
+]
+
+# 自定义域（自动创建 DNS 记录 + 证书）
+routes = [
+  { pattern = "r2.example.com", custom_domain = true }
+]
+
+# 保留 workers.dev 备用入口
+workers_dev = true
+
+[vars]
+R2_ACCOUNT_ID = "REDACTED_ACCOUNT_ID"
+# 桶名 -> CDN 自定义域；没配置的桶自动用 7 天预签名直链
+R2_CDN_MAP = '{"my-bucket":"https://cdn.example.com"}'
+
+# R2 密钥走 Worker secrets：R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
+# AUTH_PASSWORD 也是 secret
+
+[observability]
+enabled = true

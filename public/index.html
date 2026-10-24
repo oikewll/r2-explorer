@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>R2 Explorer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e6e8ec;
+    --text: #1a1d21;
+    --text-2: #6b7280;
+    --accent: #4f6ef7;
+    --accent-soft: #eef1fe;
+    --hover: #f4f6fa;
+    --danger: #dc2626;
+    --danger-soft: #fee2e2;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(16, 24, 40, .06), 0 1px 2px rgba(16, 24, 40, .04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+
+  /* ---------- login ---------- */
+  #login-view {
+    min-height: 100dvh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .login-card {
+    width: 100%; max-width: 360px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 32px;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+  .login-card .logo { font-size: 44px; }
+  .login-card h1 { font-size: 20px; margin: 12px 0 4px; }
+  .login-card p { color: var(--text-2); font-size: 13px; margin-bottom: 24px; }
+  .login-card input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+    outline: none;
+    background: var(--bg);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .login-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--accent); color: #fff;
+    padding: 11px 20px; border-radius: 10px;
+    font-weight: 600; font-size: 15px;
+    transition: filter .15s;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:active { filter: brightness(.95); }
+  .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+  .login-card .btn-primary { width: 100%; margin-top: 14px; }
+  #login-error { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+  /* ---------- main ---------- */
+  #main-view { max-width: 860px; margin: 0 auto; padding: 20px 16px 48px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  #bucket-select {
+    max-width: 180px;
+    padding: 8px 30px 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background-color: var(--card);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #bucket-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .icon-btn {
+    width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 10px; color: var(--text-2);
+    transition: background .15s, color .15s;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
+  #search {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    background: var(--card);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  /* breadcrumb */
+  .crumbs {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
+    margin-bottom: 12px; font-size: 14px; color: var(--text-2);
+    min-height: 28px;
+  }
+  .crumbs button { color: var(--accent); padding: 2px 6px; border-radius: 6px; font-weight: 500; }
+  .crumbs button:hover { background: var(--accent-soft); }
+  .crumbs .sep { color: #c3c8d0; user-select: none; }
+  .crumbs .current { color: var(--text); font-weight: 600; padding: 2px 6px; }
+
+  /* file list */
+  .list-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto auto;
+    align-items: center; gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    transition: background .12s;
+  }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--hover); }
+  .row .icon { font-size: 20px; text-align: center; }
+  .row .name {
+    font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    cursor: pointer;
+  }
+  .row .name:hover { color: var(--accent); }
+  .row.dir .name { font-weight: 600; }
+  .row .meta { font-size: 13px; color: var(--text-2); white-space: nowrap; }
+  .row .size { min-width: 64px; text-align: right; }
+  .row .time { min-width: 118px; text-align: right; }
+  .row .actions { display: inline-flex; gap: 2px; }
+  .copy-btn, .del-btn {
+    width: 32px; height: 32px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 8px; color: var(--text-2);
+    transition: background .15s, color .15s;
+  }
+  .copy-btn:hover { background: var(--accent-soft); color: var(--accent); }
+  .copy-btn.copied { color: #16a34a; }
+  .del-btn:hover { background: var(--danger-soft); color: var(--danger); }
+
+  .empty {
+    padding: 56px 20px;
+    text-align: center;
+    color: var(--text-2);
+  }
+  .empty .big { font-size: 40px; margin-bottom: 10px; }
+
+  /* footer stats */
+  .stats { margin-top: 12px; font-size: 13px; color: var(--text-2); text-align: center; }
+
+  /* ---------- bucket overview ---------- */
+  #overview { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .bucket-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: border-color .15s, transform .15s, box-shadow .15s;
+  }
+  .bucket-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 24, 40, .08);
+  }
+  .bucket-card .b-name {
+    font-weight: 600; font-size: 15px;
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .bucket-card .b-name .em { font-size: 18px; flex: none; }
+  .bucket-card .b-line { font-size: 13px; color: var(--text-2); display: flex; justify-content: space-between; gap: 8px; }
+  .bucket-card .b-line + .b-line { margin-top: 4px; }
+  .bucket-card .b-size { color: var(--text); font-weight: 500; }
+
+  /* ---------- modal ---------- */
+  #modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(16, 24, 40, .45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    z-index: 200;
+  }
+  .modal {
+    width: 100%; max-width: 420px;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, .2);
+  }
+  .modal h3 { font-size: 17px; margin-bottom: 10px; color: var(--danger); }
+  .modal .modal-desc {
+    font-size: 14px; color: var(--text);
+    background: var(--hover);
+    border-radius: 8px;
+    padding: 10px 12px;
+    word-break: break-all;
+    margin-bottom: 10px;
+  }
+  .modal .modal-warn { font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+  .modal .modal-warn b { color: var(--danger); user-select: all; }
+  .modal input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+    outline: none;
+    background: var(--bg);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .modal input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .modal-actions button {
+    padding: 9px 18px; border-radius: 10px; font-weight: 600; font-size: 14px;
+    transition: filter .15s, background .15s;
+  }
+  #modal-cancel { background: var(--hover); color: var(--text); }
+  #modal-cancel:hover { filter: brightness(.97); }
+  #modal-confirm { background: var(--danger); color: #fff; }
+  #modal-confirm:hover { filter: brightness(1.08); }
+  #modal-confirm:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* toast */
+  #toast {
+    position: fixed;
+    left: 50%; bottom: 32px;
+    transform: translateX(-50%) translateY(16px);
+    background: #1a1d21; color: #fff;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    z-index: 300;
+    max-width: 88vw;
+    word-break: break-all;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #loading { text-align: center; padding: 40px; color: var(--text-2); font-size: 14px; }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 640px) {
+    body { font-size: 14px; }
+    #main-view { padding: 14px 12px 40px; }
+    #overview { grid-template-columns: 1fr; }
+    .row {
+      grid-template-columns: 36px 1fr auto;
+      grid-template-areas:
+        "icon name actions"
+        "icon meta actions";
+      row-gap: 2px;
+      padding: 11px 12px;
+    }
+    .row .icon { grid-area: icon; font-size: 18px; }
+    .row .name { grid-area: name; }
+    .row .meta-wrap { grid-area: meta; display: inline; }
+    .row .actions { grid-area: actions; flex-direction: column; }
+    .row .meta { font-size: 12px; }
+    .row .size { min-width: 0; text-align: left; display: inline; }
+    .row .time { min-width: 0; text-align: left; display: inline; }
+    .row .time::before { content: " · "; }
+    .copy-btn, .del-btn { width: 30px; height: 30px; }
+    .brand { font-size: 15px; }
+    #bucket-select { max-width: 130px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- login -->
+<div id="login-view" hidden>
+  <div class="login-card">
+    <div class="logo">🗄️</div>
+    <h1>R2 Explorer</h1>
+    <p>输入访问密码进入文件管理</p>
+    <input type="password" id="password" placeholder="访问密码" autocomplete="current-password">
+    <div id="login-error"></div>
+    <button class="btn-primary" id="login-btn">进 入</button>
+  </div>
+</div>
+
+<!-- main -->
+<div id="main-view" hidden>
+  <header>
+    <div class="brand">🗄️ R2 Explorer</div>
+    <div class="header-right">
+      <select id="bucket-select" title="选择存储桶" hidden></select>
+      <button class="icon-btn" id="logout-btn" title="退出登录">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 桶总览 -->
+  <div id="overview" hidden></div>
+
+  <!-- 文件浏览 -->
+  <div id="browser" hidden>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="筛选当前目录文件…" autocomplete="off">
+    </div>
+    <nav class="crumbs" id="crumbs"></nav>
+    <div class="list-card" id="list-card">
+      <div id="loading" hidden>加载中…</div>
+      <div id="rows"></div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+</div>
+
+<!-- 删除确认 -->
+<div id="modal-overlay" hidden>
+  <div class="modal">
+    <h3>删除文件</h3>
+    <div class="modal-desc" id="modal-desc"></div>
+    <p class="modal-warn">此操作不可恢复！请输入 <b>delete</b> 确认删除。</p>
+    <input type="text" id="modal-input" placeholder="delete" autocomplete="off" spellcheck="false">
+    <div class="modal-actions">
+      <button id="modal-cancel">取 消</button>
+      <button id="modal-confirm" disabled>删 除</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  const $ = (s) => document.getElementById(s)
+
+  // ---------- utils ----------
+  function extIcon(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase()
+    const map = {
+      apk: '🤖', ipa: '📱', dmg: '💿', exe: '🪟', zip: '🗜️', '7z': '🗜️', rar: '🗜️', gz: '🗜️', tar: '🗜️',
+      png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🖼️', webp: '🖼️', svg: '🖼️', ico: '🖼️',
+      mp4: '🎬', mov: '🎬', webm: '🎬', avi: '🎬', mkv: '🎬',
+      mp3: '🎵', wav: '🎵', ogg: '🎵', m4a: '🎵', flac: '🎵',
+      json: '📋', meta: '📋', xml: '📋', yaml: '📋', yml: '📋',
+      js: '📜', ts: '📜', mjs: '📜', cts: '📜', html: '📜', css: '📜',
+      pdf: '📕', md: '📝', txt: '📝', csv: '📝', psd: '🎨', lua: '🌙', so: '⚙️', wasm: '⚙️',
+    }
+    return map[ext] || '📄'
+  }
+
+  function fmtSize(b) {
+    if (!b && b !== 0) return '—'
+    if (b === 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.min(Math.floor(Math.log(b) / Math.log(1024)), units.length - 1)
+    const n = b / Math.pow(1024, i)
+    return (n >= 100 ? Math.round(n) : n.toFixed(1)) + ' ' + units[i]
+  }
+
+  function fmtTime(iso) {
+    const d = new Date(iso)
+    if (isNaN(d)) return '—'
+    const pad = (x) => String(x).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  function fmtNum(n) {
+    return Number(n || 0).toLocaleString('en-US')
+  }
+
+  let toastTimer
+  function toast(msg) {
+    const t = $('toast')
+    t.textContent = msg
+    t.classList.add('show')
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2200)
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      let ok = false
+      try { ok = document.execCommand('copy') } catch {}
+      ta.remove()
+      return ok
+    }
+  }
+
+  // ---------- api ----------
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...opts,
+    })
+    if (res.status === 401) {
+      showLogin()
+      throw new Error('unauthorized')
+    }
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'request failed')
+    return data
+  }
+
+  // ---------- views ----------
+  function showLogin() {
+    $('login-view').hidden = false
+    $('main-view').hidden = true
+    $('password').focus()
+  }
+  function showMain() {
+    $('login-view').hidden = true
+    $('main-view').hidden = false
+  }
+
+  function setView(v) {
+    const isOverview = v === 'overview'
+    $('overview').hidden = !isOverview
+    $('browser').hidden = isOverview
+    $('bucket-select').hidden = isOverview
+  }
+
+  // ---------- hash 路由：#/ 为桶总览，#/<bucket>/<prefix> 为目录 ----------
+  function buildHash(bucket, prefix) {
+    const p = prefix.split('/').map(encodeURIComponent).join('/')
+    return `#/${encodeURIComponent(bucket)}/${p}`
+  }
+
+  function parseHash() {
+    const h = location.hash.replace(/^#\/?/, '')
+    if (!h) return { bucket: '', prefix: '' }
+    const parts = h.split('/')
+    const bucket = decodeURIComponent(parts[0] || '')
+    const prefix = parts.slice(1).map(decodeURIComponent).join('/')
+    return { bucket, prefix }
+  }
+
+  function currentBucket() {
+    return parseHash().bucket
+  }
+
+  // ---------- 桶总览 ----------
+  function bucketCard(b, i) {
+    const card = document.createElement('div')
+    card.className = 'bucket-card'
+    card.innerHTML = `
+      <div class="b-name"><span class="em">🪣</span>${b.name}</div>
+      <div class="b-line"><span class="b-objects">${b.stats ? fmtNum(b.stats.objects) + ' 个对象' : '统计中…'}</span><span class="b-size">${b.stats ? b.stats.sizeText : ''}</span></div>
+      <div class="b-line"><span class="b-modified">${b.stats ? (b.stats.modifiedText ? '更新 ' + fmtTime(b.stats.lastModified) : '空桶') : ''}</span></div>`
+    card.onclick = () => { location.hash = buildHash(b.name, '') }
+    if (!b.stats) setTimeout(() => fetchStats(b.name, card), i * 150)
+    return card
+  }
+
+  async function fetchStats(name, card) {
+    try {
+      const data = await api('/api/stats?bucket=' + encodeURIComponent(name))
+      card.querySelector('.b-objects').textContent = fmtNum(data.stats.objects) + ' 个对象'
+      card.querySelector('.b-size').textContent = data.stats.sizeText
+      card.querySelector('.b-modified').textContent = data.stats.modifiedText
+        ? '更新 ' + fmtTime(data.stats.lastModified)
+        : '空桶'
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        card.querySelector('.b-modified').textContent = '统计失败'
+      }
+    }
+  }
+
+  // ---------- 桶数据（总览卡片 + 顶部选择器共用） ----------
+  let bucketData = []
+
+  async function loadBuckets() {
+    const data = await api('/api/buckets')
+    bucketData = data.buckets || []
+    const sel = $('bucket-select')
+    sel.innerHTML = ''
+    bucketData.forEach((b) => {
+      const opt = document.createElement('option')
+      opt.value = b.name
+      opt.textContent = b.name
+      sel.appendChild(opt)
+    })
+    sel.hidden = bucketData.length === 0
+    return bucketData
+  }
+
+  async function showOverview() {
+    setView('overview')
+    const el = $('overview')
+    el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-2);font-size:14px">加载中…</div>'
+    try {
+      const buckets = await loadBuckets()
+      el.innerHTML = ''
+      if (!buckets.length) {
+        el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:56px 20px;color:var(--text-2)"><div style="font-size:40px;margin-bottom:10px">🪣</div>账号下没有找到 R2 存储桶</div>'
+        return
+      }
+      buckets.forEach((b, i) => el.appendChild(bucketCard(b, i)))
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--danger);font-size:14px">加载失败：${e.message}</div>`
+      }
+    }
+  }
+
+  // ---------- 文件浏览 ----------
+  function renderCrumbs(crumbs) {
+    const el = $('crumbs')
+    el.innerHTML = ''
+    crumbs.forEach((c, i) => {
+      const last = i === crumbs.length - 1
+      if (last) {
+        const span = document.createElement('span')
+        span.className = 'current'
+        span.textContent = c.name
+        el.appendChild(span)
+      } else {
+        const btn = document.createElement('button')
+        btn.textContent = c.name
+        btn.onclick = () => { location.hash = buildHash(currentBucket(), c.path) }
+        el.appendChild(btn)
+        const sep = document.createElement('span')
+        sep.className = 'sep'
+        sep.textContent = '/'
+        el.appendChild(sep)
+      }
+    })
+  }
+
+  function fileRow(f) {
+    const row = document.createElement('div')
+    row.className = 'row file'
+    row.innerHTML = `
+      <div class="icon">${extIcon(f.name)}</div>
+      <div class="name" title="${f.name}">${f.name}</div>
+      <div class="meta-wrap"><span class="meta size">${f.sizeText}</span><span class="meta time">${fmtTime(f.modified)}</span></div>
+      <div class="actions">
+        <button class="copy-btn" title="复制直链">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+        <button class="del-btn" title="删除文件">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>`
+    row.querySelector('.name').onclick = () => window.open(f.url, '_blank')
+    const copyBtn = row.querySelector('.copy-btn')
+    copyBtn.onclick = async () => {
+      const ok = await copyText(f.url)
+      if (ok) {
+        toast((f.presigned ? '已复制临时直链（7 天有效）：' : '已复制：') + f.url)
+        copyBtn.classList.add('copied')
+        setTimeout(() => copyBtn.classList.remove('copied'), 1200)
+      } else {
+        toast('复制失败，请长按文件名复制链接')
+      }
+    }
+    row.querySelector('.del-btn').onclick = () => openDeleteModal(f)
+    return row
+  }
+
+  function dirRow(d) {
+    const row = document.createElement('div')
+    row.className = 'row dir'
+    row.innerHTML = `
+      <div class="icon">📁</div>
+      <div class="name" title="${d.name}">${d.name}</div>
+      <div class="meta-wrap"><span class="meta size">—</span><span class="meta time">文件夹</span></div>
+      <div class="actions"></div>`
+    row.querySelector('.name').onclick = () => { location.hash = buildHash(currentBucket(), d.path) }
+    return row
+  }
+
+  function matchFilter(name) {
+    const q = $('search').value.trim().toLowerCase()
+    if (!q) return true
+    return name.toLowerCase().includes(q)
+  }
+
+  function applyFilter() {
+    document.querySelectorAll('#rows .row').forEach((r) => {
+      const name = r.querySelector('.name').textContent
+      r.style.display = matchFilter(name) ? '' : 'none'
+    })
+  }
+
+  async function routeLoad() {
+    const { bucket, prefix } = parseHash()
+    if (!bucket) {
+      await showOverview()
+      return
+    }
+    setView('browser')
+    if (!bucketData.length) {
+      try { await loadBuckets() } catch {}
+    }
+    $('bucket-select').value = bucket
+    $('loading').hidden = false
+    $('rows').innerHTML = ''
+    $('stats').textContent = ''
+    try {
+      const data = await api('/api/list?bucket=' + encodeURIComponent(bucket) + '&prefix=' + encodeURIComponent(prefix))
+      $('loading').hidden = true
+      renderCrumbs(data.crumbs)
+
+      const rows = $('rows')
+      rows.innerHTML = ''
+      const dirs = data.dirs.filter((d) => matchFilter(d.name))
+      const files = data.files.filter((f) => matchFilter(f.name))
+
+      if (!dirs.length && !files.length) {
+        rows.innerHTML = `<div class="empty"><div class="big">🫙</div>这个目录是空的</div>`
+      } else {
+        dirs.forEach((d) => rows.appendChild(dirRow(d)))
+        files.forEach((f) => rows.appendChild(fileRow(f)))
+        const total = files.reduce((s, f) => s + f.size, 0)
+        $('stats').textContent = `${dirs.length} 个文件夹 · ${files.length} 个文件 · 共 ${fmtSize(total)}`
+      }
+      window.scrollTo({ top: 0 })
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        $('loading').hidden = true
+        $('rows').innerHTML = `<div class="empty"><div class="big">⚠️</div>加载失败：${e.message}</div>`
+      }
+    }
+  }
+
+  function navigate(bucket, prefix) {
+    const target = buildHash(bucket, prefix)
+    if (location.hash === target) {
+      routeLoad()
+    } else {
+      location.hash = target
+    }
+  }
+
+  window.addEventListener('hashchange', routeLoad)
+
+  // ---------- 删除确认 ----------
+  let pendingDelete = null
+
+  function openDeleteModal(f) {
+    pendingDelete = { bucket: currentBucket(), key: f.path, name: f.name }
+    $('modal-desc').textContent = `${pendingDelete.bucket} / ${f.path}`
+    $('modal-input').value = ''
+    $('modal-confirm').disabled = true
+    $('modal-overlay').hidden = false
+    $('modal-input').focus()
+  }
+
+  function closeModal() {
+    pendingDelete = null
+    $('modal-overlay').hidden = true
+  }
+
+  $('modal-input').addEventListener('input', (e) => {
+    $('modal-confirm').disabled = e.target.value !== 'delete'
+  })
+  $('modal-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.value === 'delete') $('modal-confirm').click()
+  })
+  $('modal-cancel').onclick = closeModal
+  $('modal-overlay').addEventListener('click', (e) => {
+    if (e.target === $('modal-overlay')) closeModal()
+  })
+
+  $('modal-confirm').onclick = async () => {
+    if (!pendingDelete) return
+    const { bucket, key, name } = pendingDelete
+    $('modal-confirm').disabled = true
+    $('modal-confirm').textContent = '删除中…'
+    try {
+      await api('/api/object?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(key), {
+        method: 'DELETE',
+      })
+      closeModal()
+      toast('已删除：' + name)
+      routeLoad()
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        toast('删除失败：' + e.message)
+        $('modal-confirm').disabled = false
+      }
+    } finally {
+      $('modal-confirm').textContent = '删 除'
+    }
+  }
+
+  // ---------- events ----------
+  $('search').addEventListener('input', applyFilter)
+  $('bucket-select').addEventListener('change', (e) => {
+    navigate(e.target.value, '')
+  })
+
+  $('login-btn').onclick = doLogin
+  $('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin() })
+  async function doLogin() {
+    const btn = $('login-btn')
+    btn.disabled = true
+    $('login-error').textContent = ''
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: $('password').value }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        $('login-error').textContent = data.error || '登录失败'
+        return
+      }
+      $('password').value = ''
+      await init()
+    } finally {
+      btn.disabled = false
+    }
+  }
+
+  $('logout-btn').onclick = async () => {
+    await fetch('/api/logout', { method: 'POST' })
+    showLogin()
+  }
+
+  // ---------- init ----------
+  async function init() {
+    try {
+      await api('/api/me')
+      showMain()
+      await routeLoad()
+    } catch {}
+  }
+  init()
+})()
+</script>
+</body>
+</html>
