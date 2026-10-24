@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>R2 Explorer</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%234f6ef7'/%3E%3Cellipse cx='50' cy='28' rx='28' ry='10' fill='none' stroke='white' stroke-width='7'/%3E%3Cpath d='M22 28v44c0 5.5 12.5 10 28 10s28-4.5 28-10V28' fill='none' stroke='white' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M22 50c0 5.5 12.5 10 28 10s28-4.5 28-10' fill='none' stroke='white' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #f6f7f9;
@@ -154,7 +154,13 @@
   .row.selected { background: var(--accent-soft); }
   .row:last-child { border-bottom: none; }
   .row:hover { background: var(--hover); }
-  .row .icon { font-size: 20px; text-align: center; }
+  .row .icon { display: flex; justify-content: center; }
+  .ficon {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 8px; flex: none; color: #fff;
+    width: 28px; height: 28px;
+  }
+  .ficon svg { display: block; }
   .row .name {
     font-weight: 500;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -226,7 +232,7 @@
     margin-bottom: 8px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .bucket-card .b-name .em { font-size: 18px; flex: none; }
+  .bucket-card .b-name .em { flex: none; display: inline-flex; }
   .bucket-card .b-line { font-size: 13px; color: var(--text-2); display: flex; justify-content: space-between; gap: 8px; }
   .bucket-card .b-line + .b-line { margin-top: 4px; }
   .bucket-card .b-size { color: var(--text); font-weight: 500; }
@@ -598,7 +604,8 @@
       padding: 11px 12px;
     }
     .row .chk { grid-area: chk; width: 17px; height: 17px; }
-    .row .icon { grid-area: icon; font-size: 18px; }
+    .row .icon { grid-area: icon; }
+    .row .icon .ficon { width: 26px; height: 26px; }
     .row .name { grid-area: name; }
     .row .meta-wrap { grid-area: meta; display: inline; }
     .row .actions { grid-area: actions; flex-direction: column; }
@@ -617,7 +624,7 @@
 <!-- login -->
 <div id="login-view" hidden>
   <div class="login-card">
-    <div class="logo">🗄️</div>
+    <div class="logo" style="display:inline-flex"><span id="login-logo"></span></div>
     <h1>R2 Explorer</h1>
     <p>输入访问密码进入文件管理</p>
     <input type="password" id="password" placeholder="访问密码" autocomplete="current-password">
@@ -629,7 +636,7 @@
 <!-- main -->
 <div id="main-view" hidden>
   <header>
-    <div class="brand">🗄️ R2 Explorer</div>
+    <div class="brand" style="display:inline-flex;align-items:center;gap:8px"><span id="brand-logo" style="display:inline-flex"></span>R2 Explorer</div>
     <div class="header-right">
       <select id="bucket-select" title="选择存储桶" hidden></select>
       <button class="icon-btn" id="logout-btn" title="退出登录">
@@ -645,7 +652,7 @@
   <div id="browser" hidden>
     <div class="toolbar">
       <input type="search" id="search" placeholder="筛选当前目录文件…" autocomplete="off">
-      <button class="sel-all-btn" id="upload-btn" title="上传到当前目录">⬆ 上传</button>
+      <button class="sel-all-btn" id="upload-btn" title="上传到当前目录" style="display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传</button>
       <button class="sel-all-btn" id="sel-all-toggle" hidden>全选</button>
       <input type="file" id="upload-input" multiple hidden>
     </div>
@@ -693,8 +700,8 @@
 <!-- 批量操作栏 -->
 <div id="sel-bar" hidden>
   <span class="sel-count" id="sel-count"></span>
-  <button id="sel-move">📁 移动</button>
-  <button id="sel-del">🗑 删除</button>
+  <button id="sel-move" style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6"/><path d="M13 11l2 2-2 2"/></svg>移动</button>
+  <button id="sel-del" style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</button>
   <button id="sel-cancel">取消</button>
 </div>
 
@@ -705,7 +712,7 @@
     <div class="mv-sub" id="mv-sub"></div>
     <div class="mv-crumbs" id="mv-crumbs"></div>
     <div class="mv-list" id="mv-list"></div>
-    <div class="mv-note">⚠ 同名文件将被覆盖，文件夹不可移动</div>
+    <div class="mv-note">注意：同名文件将被覆盖，文件夹不可移动</div>
     <div class="modal-actions">
       <button id="mv-cancel">取 消</button>
       <button class="btn-primary" id="mv-confirm" style="padding:9px 18px">移动到此处</button>
@@ -730,7 +737,7 @@
 <!-- 拖曳上传浮层 -->
 <div id="drop-overlay" hidden>
   <div class="drop-hint">
-    <div class="big">📤</div>
+    <div style="display:flex;justify-content:center;margin-bottom:8px"><span class="ficon" style="width:52px;height:52px;border-radius:14px;background:var(--accent)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span></div>
     松开上传到当前目录
     <div class="sub" id="drop-target"></div>
   </div>
@@ -751,19 +758,71 @@
 (() => {
   const $ = (s) => document.getElementById(s)
 
+  // 登录页 + 顶栏 logo（数据库桶图标）
+  function renderBrandLogo() {
+    const html = `<span class="ficon" style="width:30px;height:30px;border-radius:9px;background:${ICON_COLORS.bucket}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${GLYPHS.bucket}</svg></span>`
+    const brand = $('brand-logo')
+    if (brand) brand.innerHTML = html
+    const logo = $('login-logo')
+    if (logo) logo.innerHTML = `<span class="ficon" style="width:56px;height:56px;border-radius:16px;background:${ICON_COLORS.bucket}"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${GLYPHS.bucket}</svg></span>`
+  }
+
   // ---------- utils ----------
-  function extIcon(name) {
+  // 文件类型 → 图标类型
+  function iconType(name) {
     const ext = (name.split('.').pop() || '').toLowerCase()
-    const map = {
-      apk: '🤖', ipa: '📱', dmg: '💿', exe: '🪟', zip: '🗜️', '7z': '🗜️', rar: '🗜️', gz: '🗜️', tar: '🗜️',
-      png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🖼️', webp: '🖼️', svg: '🖼️', ico: '🖼️',
-      mp4: '🎬', mov: '🎬', webm: '🎬', avi: '🎬', mkv: '🎬',
-      mp3: '🎵', wav: '🎵', ogg: '🎵', m4a: '🎵', flac: '🎵',
-      json: '📋', meta: '📋', xml: '📋', yaml: '📋', yml: '📋',
-      js: '📜', ts: '📜', mjs: '📜', cts: '📜', html: '📜', css: '📜',
-      pdf: '📕', md: '📝', txt: '📝', csv: '📝', psd: '🎨', lua: '🌙', so: '⚙️', wasm: '⚙️',
-    }
-    return map[ext] || '📄'
+    if (['png','jpg','jpeg','gif','webp','svg','bmp','ico','avif','heic'].includes(ext)) return 'image'
+    if (['mp4','webm','m4v','mov','avi','mkv','flv','wmv'].includes(ext)) return 'video'
+    if (['mp3','wav','ogg','m4a','aac','flac','opus','wma'].includes(ext)) return 'audio'
+    if (ext === 'pdf') return 'pdf'
+    if (['zip','7z','rar','gz','tar','bz2','xz','zst'].includes(ext)) return 'archive'
+    if (['apk','ipa','dmg','exe','msi','appimage','deb','rpm'].includes(ext)) return 'app'
+    if (['js','ts','mjs','cts','jsx','tsx','html','htm','css','scss','json','meta','xml','yml','yaml','lua','sh','bash','plist','properties','py','go','rs','java','kt','swift','c','cpp','h','hpp','cs','php','rb','sql'].includes(ext)) return 'code'
+    if (['md','txt','csv','log','version','ini','cfg','conf'].includes(ext)) return 'doc'
+    if (['so','wasm','dylib','dll','bin','dat','pak'].includes(ext)) return 'binary'
+    return 'file'
+  }
+
+  // 彩色圆角徽章 + 白色线性 SVG 图标（商业网盘风格）
+  const GLYPHS = {
+    folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    bucket: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
+    video: '<rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 9l5 3-5 3z" fill="#fff" stroke="none"/>',
+    audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/>',
+    archive: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7l8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+    doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+    app: '<rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M12 18h.01"/>',
+    binary: '<path d="M4 20h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z"/><path d="M9 8h1.5v8"/><path d="M14 8h1.5v8"/><path d="M9 12h3"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+    folderMove: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6"/><path d="M13 11l2 2-2 2"/>',
+    trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    alert: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  }
+
+  const ICON_COLORS = {
+    folder: '#f7b955',
+    bucket: '#4f6ef7',
+    image: '#8b5cf6',
+    video: '#f43f5e',
+    audio: '#14b8a6',
+    pdf: '#ef4444',
+    archive: '#f97316',
+    code: '#3b82f6',
+    doc: '#64748b',
+    app: '#22c55e',
+    binary: '#a78bfa',
+    file: '#9ca3af',
+  }
+
+  function ficon(type, size = 28) {
+    const glyph = GLYPHS[type] || GLYPHS.file
+    const color = ICON_COLORS[type] || ICON_COLORS.file
+    const inner = Math.round(size * 0.52)
+    return `<span class="ficon" style="width:${size}px;height:${size}px;border-radius:${Math.max(6, Math.round(size * 0.28))}px;background:${color}"><svg width="${inner}" height="${inner}" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg></span>`
   }
 
   function fmtSize(b) {
@@ -870,7 +929,7 @@
     const card = document.createElement('div')
     card.className = 'bucket-card'
     card.innerHTML = `
-      <div class="b-name"><span class="em">🪣</span>${b.name}</div>
+      <div class="b-name"><span class="em">${ficon('bucket', 22)}</span>${b.name}</div>
       <div class="b-line"><span class="b-objects">${b.stats ? fmtNum(b.stats.objects) + ' 个对象' : '统计中…'}</span><span class="b-size">${b.stats ? b.stats.sizeText : ''}</span></div>
       <div class="b-line"><span class="b-modified">${b.stats ? (b.stats.modifiedText ? '更新 ' + fmtTime(b.stats.lastModified) : '空桶') : ''}</span></div>`
     card.onclick = () => { location.hash = buildHash(b.name, '') }
@@ -919,7 +978,7 @@
       const buckets = await loadBuckets()
       el.innerHTML = ''
       if (!buckets.length) {
-        el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:56px 20px;color:var(--text-2)"><div style="font-size:40px;margin-bottom:10px">🪣</div>账号下没有找到 R2 存储桶</div>'
+        el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:56px 20px;color:var(--text-2)"><div style="display:flex;justify-content:center;margin-bottom:10px">' + ficon('bucket', 56) + '</div>账号下没有找到 R2 存储桶</div>'
         return
       }
       buckets.forEach((b, i) => el.appendChild(bucketCard(b, i)))
@@ -959,7 +1018,7 @@
     row.className = 'row file'
     row.innerHTML = `
       <input type="checkbox" class="chk" title="选择">
-      <div class="icon">${extIcon(f.name)}</div>
+      <div class="icon">${ficon(iconType(f.name))}</div>
       <div class="name" title="${f.name}">${f.name}</div>
       <div class="meta-wrap"><span class="meta size">${f.sizeText}</span><span class="meta time">${fmtTime(f.modified)}</span></div>
       <div class="actions">
@@ -1004,7 +1063,7 @@
     const row = document.createElement('div')
     row.className = 'row dir'
     row.innerHTML = `
-      <div class="icon">📁</div>
+      <div class="icon">${ficon('folder')}</div>
       <div class="name" title="${d.name}">${d.name}</div>
       <div class="meta-wrap"><span class="meta size">—</span><span class="meta time">文件夹</span></div>
       <div class="actions"></div>`
@@ -1053,7 +1112,7 @@
       updateSelBar()
 
       if (!dirs.length && !files.length) {
-        rows.innerHTML = `<div class="empty"><div class="big">🫙</div>这个目录是空的</div>`
+        rows.innerHTML = `<div class="empty"><div style="display:flex;justify-content:center;margin-bottom:10px">${ficon('folder', 56)}</div>这个目录是空的</div>`
       } else {
         dirs.forEach((d) => rows.appendChild(dirRow(d)))
         files.forEach((f) => rows.appendChild(fileRow(f)))
@@ -1064,7 +1123,7 @@
     } catch (e) {
       if (e.message !== 'unauthorized') {
         $('loading').hidden = true
-        $('rows').innerHTML = `<div class="empty"><div class="big">⚠️</div>加载失败：${e.message}</div>`
+        $('rows').innerHTML = `<div class="empty"><div style="display:flex;justify-content:center;margin-bottom:10px">${ficon('alert', 56)}</div>加载失败：${e.message}</div>`
       }
     }
   }
@@ -1148,7 +1207,7 @@
     $v.back.hidden = viewerState.mode !== 'zipEntry'
     setBody(`
       <div class="dl-prompt">
-        <div class="big">${extIcon(f.name)}</div>
+        <div style="display:flex;justify-content:center;margin-bottom:14px">${ficon(iconType(f.name), 72)}</div>
         <div class="t1">${esc(f.name)}</div>
         <div class="t2">${reason || '该文件类型无法在线预览'}</div>
         <button onclick="window.open('${viewerState.dlUrl}', '_blank')">⬇ 下载文件</button>
@@ -1189,8 +1248,8 @@
     } else if (cat === 'audio') {
       setBody(`
         <div class="audio-card">
-          <div class="cover">🎵</div>
-          <div class="a-name">${esc(f.name)}</div>
+        <div class="cover"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <div class="a-name">${esc(f.name)}</div>
           <div class="a-sub">${fmtSize(f.size)}</div>
           <audio src="${esc(f.url)}" controls autoplay></audio>
         </div>`, false)
@@ -1236,7 +1295,7 @@
           ? `<span class="z-act" data-i="${i}">预览</span>`
           : `<span class="z-act dl" data-i="${i}">下载</span>`
         return `<div class="zip-row">
-          <div>${extIcon(e.name)}</div>
+          <div>${ficon(iconType(e.name), 24)}</div>
           <div class="z-name" data-i="${i}" title="${esc(e.name)}">${esc(e.name)}</div>
           <div class="z-size">${fmtSize(e.uncompSize)}</div>
           <div>${act}</div>
@@ -1276,7 +1335,7 @@
     } else if (cat === 'audio') {
       setBody(`
         <div class="audio-card">
-          <div class="cover">🎵</div>
+          <div class="cover"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
           <div class="a-name">${esc(e.name.split('/').pop())}</div>
           <div class="a-sub">${fmtSize(e.uncompSize)} · 来自 ${esc(f.name.split('/').pop())}</div>
           <audio src="${esc(url)}" controls autoplay></audio>
@@ -1430,7 +1489,7 @@
       dirs.forEach((d) => {
         const row = document.createElement('div')
         row.className = 'mv-row'
-        row.innerHTML = `<span>📁</span><span>${esc(d.name)}</span>`
+        row.innerHTML = `<span class="ficon" style="width:24px;height:24px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${GLYPHS.folder}</svg></span><span>${esc(d.name)}</span>`
         row.onclick = () => { moveState.target = d.path; renderMoveCrumbs(); loadMoveDirs(d.path) }
         list.appendChild(row)
       })
@@ -1799,6 +1858,7 @@
   }
 
   // ---------- init ----------
+  renderBrandLogo()
   async function init() {
     try {
       await api('/api/me')
