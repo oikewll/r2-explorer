@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>R2 Explorer</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%234f6ef7'/%3E%3Cellipse cx='50' cy='28' rx='28' ry='10' fill='none' stroke='white' stroke-width='7'/%3E%3Cpath d='M22 28v44c0 5.5 12.5 10 28 10s28-4.5 28-10V28' fill='none' stroke='white' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M22 50c0 5.5 12.5 10 28 10s28-4.5 28-10' fill='none' stroke='white' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- 代码高亮：highlight.js（自动识别语言 + github 主题） -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/styles/github.min.css">
+<script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
 <style>
   :root {
     --bg: #f6f7f9;
@@ -365,6 +368,20 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     white-space: pre-wrap; word-break: break-all;
     overflow: auto;
+  }
+  /* 代码高亮视图 */
+  .viewer-body pre.code-view {
+    background: transparent;
+    color: var(--text);
+    white-space: pre; word-break: normal;
+    overflow-x: auto;
+    tab-size: 4;
+  }
+  .viewer-body pre.code-view code.hljs {
+    display: block; min-width: max-content;
+    background: transparent; padding: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.6;
   }
   .viewer-loading { color: #9aa1ab; font-size: 14px; padding: 40px; }
   .viewer-msg { color: #9aa1ab; font-size: 14px; padding: 40px; text-align: center; }
@@ -1208,7 +1225,7 @@
   const IMAGE_EXT = new Set(['png','jpg','jpeg','gif','webp','svg','bmp','ico','avif'])
   const VIDEO_EXT = new Set(['mp4','webm','m4v','mov'])
   const AUDIO_EXT = new Set(['mp3','wav','ogg','m4a','aac','flac','opus'])
-  const TEXT_EXT = new Set(['txt','json','meta','xml','yml','yaml','js','ts','mjs','cts','css','html','htm','md','csv','log','ini','cfg','conf','sh','lua','plist','properties','version'])
+  const TEXT_EXT = new Set(['txt','json','meta','xml','yml','yaml','js','ts','mjs','cts','css','html','htm','md','csv','log','ini','cfg','conf','sh','lua','plist','properties','version','py','go','rs','java','c','h','cpp','hpp','cs','php','rb','sql','toml','swift','kt','diff','patch','env'])
   const ZIP_EXT = new Set(['zip','apk','ipa','jar','xapk','epub'])
 
   function categoryOf(name) {
@@ -1302,6 +1319,49 @@
     return '/api/text?bucket=' + encodeURIComponent(f.bucket || currentBucket()) + '&key=' + encodeURIComponent(f.path)
   }
 
+  // ---------- 代码高亮 ----------
+  // 扩展名 → highlight.js 语言；不在表里的交给 hljs 自动识别，纯文本类跳过高亮
+  const PLAIN_EXT = new Set(['txt', 'log', 'csv'])
+  const LANG_BY_EXT = {
+    json: 'json',
+    js: 'javascript', mjs: 'javascript', cts: 'javascript', ts: 'typescript',
+    html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml', plist: 'xml',
+    css: 'css', md: 'markdown',
+    yml: 'yaml', yaml: 'yaml', toml: 'ini',
+    ini: 'ini', cfg: 'ini', conf: 'ini', env: 'ini', properties: 'ini',
+    sh: 'bash', lua: 'lua', py: 'python', rb: 'ruby', php: 'php', sql: 'sql',
+    go: 'go', rs: 'rust', java: 'java', c: 'c', h: 'c',
+    cpp: 'cpp', hpp: 'cpp', cs: 'csharp', swift: 'swift', kt: 'kotlin',
+    diff: 'diff', patch: 'diff',
+  }
+
+  function codeLang(name) {
+    if (!window.hljs) return ''
+    const ext = (name.split('.').pop() || '').toLowerCase()
+    if (PLAIN_EXT.has(ext)) return 'plaintext'
+    const lang = LANG_BY_EXT[ext]
+    if (lang && hljs.getLanguage(lang)) return lang
+    return '' // 自动识别
+  }
+
+  function setCodeBody(text, name) {
+    const ext = (name.split('.').pop() || '').toLowerCase()
+    let shown = text
+    let lang = codeLang(name)
+    if (ext === 'json') {
+      try { shown = JSON.stringify(JSON.parse(text), null, 2); lang = 'json' } catch {}
+    }
+    // hljs 未加载（CDN 不可用）时降级为纯文本
+    if (!window.hljs) return setBody(`<pre>${esc(shown)}</pre>`, true)
+    setBody('<pre class="code-view"><code class="hljs"></code></pre>', true)
+    const code = $v.body.querySelector('code')
+    code.textContent = shown
+    try {
+      if (lang) code.classList.add('language-' + lang)
+      hljs.highlightElement(code) // 带 language 类按语言高亮，否则 hljs 自动识别
+    } catch {}
+  }
+
   async function openFile(f) {
     openViewer(f)
     viewerState.dlUrl = f.url
@@ -1329,11 +1389,7 @@
           return
         }
         const text = await res.text()
-        let shown = text
-        if ((f.name.split('.').pop() || '').toLowerCase() === 'json') {
-          try { shown = JSON.stringify(JSON.parse(text), null, 2) } catch {}
-        }
-        setBody(`<pre>${esc(shown)}</pre>`, true)
+        setCodeBody(text, f.name)
       } catch {
         showDownloadPrompt(f, '读取失败')
       }
@@ -1417,11 +1473,7 @@
           return
         }
         const text = await res.text()
-        let shown = text
-        if ((e.name.split('.').pop() || '').toLowerCase() === 'json') {
-          try { shown = JSON.stringify(JSON.parse(text), null, 2) } catch {}
-        }
-        setBody(`<pre>${esc(shown)}</pre>`, true)
+        setCodeBody(text, e.name)
       } catch {
         showDownloadPrompt(e, '读取失败')
       }
