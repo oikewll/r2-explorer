@@ -145,12 +145,13 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 40px 1fr auto auto;
+    grid-template-columns: 26px 40px 1fr auto auto;
     align-items: center; gap: 10px;
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     transition: background .12s;
   }
+  .row.selected { background: var(--accent-soft); }
   .row:last-child { border-bottom: none; }
   .row:hover { background: var(--hover); }
   .row .icon { font-size: 20px; text-align: center; }
@@ -165,6 +166,12 @@
   .row .size { min-width: 64px; text-align: right; }
   .row .time { min-width: 118px; text-align: right; }
   .row .actions { display: inline-flex; gap: 2px; }
+  .row .chk {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex: none;
+  }
   .copy-btn, .del-btn {
     width: 32px; height: 32px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -386,6 +393,94 @@
   .zip-row .z-act.dl { background: var(--hover); color: var(--text-2); }
   .zip-row .z-act.dl:hover { background: var(--danger-soft); color: var(--danger); }
 
+  /* 批量操作栏 */
+  .sel-all-btn {
+    padding: 9px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    font-size: 14px; font-weight: 500;
+    color: var(--text-2);
+    transition: color .15s, border-color .15s;
+    flex: none;
+  }
+  .sel-all-btn:hover { color: var(--accent); border-color: var(--accent); }
+  #sel-bar {
+    position: fixed;
+    left: 50%; bottom: 24px;
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: #1a1d21; color: #fff;
+    padding: 10px 14px;
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(16, 24, 40, .3);
+    z-index: 150;
+    max-width: 94vw;
+  }
+  #sel-bar .sel-count { font-size: 13px; font-weight: 600; white-space: nowrap; padding: 0 2px; }
+  #sel-bar button {
+    padding: 8px 14px; border-radius: 9px;
+    font-size: 13px; font-weight: 600;
+    transition: filter .15s, background .15s, color .15s;
+    white-space: nowrap;
+  }
+  #sel-bar #sel-move { background: var(--accent); color: #fff; }
+  #sel-bar #sel-move:hover { filter: brightness(1.1); }
+  #sel-bar #sel-del { background: var(--danger); color: #fff; }
+  #sel-bar #sel-del:hover { filter: brightness(1.1); }
+  #sel-bar #sel-cancel { color: #9aa1ab; }
+  #sel-bar #sel-cancel:hover { color: #fff; }
+
+  /* 移动目标选择模态框 */
+  #move-overlay {
+    position: fixed; inset: 0;
+    background: rgba(16, 24, 40, .45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    z-index: 210;
+  }
+  .move-modal {
+    width: 100%; max-width: 460px;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, .2);
+  }
+  .move-modal h3 { font-size: 17px; margin-bottom: 4px; }
+  .move-modal .mv-sub { font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+  .mv-crumbs {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
+    font-size: 13px; color: var(--text-2);
+    background: var(--hover);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+  }
+  .mv-crumbs button { color: var(--accent); padding: 2px 4px; border-radius: 5px; font-weight: 500; }
+  .mv-crumbs button:hover { background: var(--accent-soft); }
+  .mv-crumbs button.cur { color: var(--text); font-weight: 600; pointer-events: none; }
+  .mv-crumbs .sep { color: #c3c8d0; }
+  .mv-list {
+    max-height: 260px; overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+  .mv-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .mv-row:last-child { border-bottom: none; }
+  .mv-row:hover { background: var(--hover); }
+  .mv-row.disabled { color: var(--text-2); cursor: default; }
+  .mv-row.disabled:hover { background: none; }
+  .mv-empty { padding: 24px; text-align: center; color: var(--text-2); font-size: 13px; }
+  .move-modal .mv-note { font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+
   /* toast */
   #toast {
     position: fixed;
@@ -412,13 +507,14 @@
     #main-view { padding: 14px 12px 40px; }
     #overview { grid-template-columns: 1fr; }
     .row {
-      grid-template-columns: 36px 1fr auto;
+      grid-template-columns: 24px 36px 1fr auto;
       grid-template-areas:
-        "icon name actions"
-        "icon meta actions";
+        "chk icon name actions"
+        "chk icon meta actions";
       row-gap: 2px;
       padding: 11px 12px;
     }
+    .row .chk { grid-area: chk; width: 17px; height: 17px; }
     .row .icon { grid-area: icon; font-size: 18px; }
     .row .name { grid-area: name; }
     .row .meta-wrap { grid-area: meta; display: inline; }
@@ -466,6 +562,7 @@
   <div id="browser" hidden>
     <div class="toolbar">
       <input type="search" id="search" placeholder="筛选当前目录文件…" autocomplete="off">
+      <button class="sel-all-btn" id="sel-all-toggle" hidden>全选</button>
     </div>
     <nav class="crumbs" id="crumbs"></nav>
     <div class="list-card" id="list-card">
@@ -505,6 +602,29 @@
       </div>
     </div>
     <div class="viewer-body" id="viewer-body"></div>
+  </div>
+</div>
+
+<!-- 批量操作栏 -->
+<div id="sel-bar" hidden>
+  <span class="sel-count" id="sel-count"></span>
+  <button id="sel-move">📁 移动</button>
+  <button id="sel-del">🗑 删除</button>
+  <button id="sel-cancel">取消</button>
+</div>
+
+<!-- 移动目标选择 -->
+<div id="move-overlay" hidden>
+  <div class="move-modal">
+    <h3>移动文件</h3>
+    <div class="mv-sub" id="mv-sub"></div>
+    <div class="mv-crumbs" id="mv-crumbs"></div>
+    <div class="mv-list" id="mv-list"></div>
+    <div class="mv-note">⚠ 同名文件将被覆盖，文件夹不可移动</div>
+    <div class="modal-actions">
+      <button id="mv-cancel">取 消</button>
+      <button class="btn-primary" id="mv-confirm" style="padding:9px 18px">移动到此处</button>
+    </div>
   </div>
 </div>
 
@@ -721,6 +841,7 @@
     const row = document.createElement('div')
     row.className = 'row file'
     row.innerHTML = `
+      <input type="checkbox" class="chk" title="选择">
       <div class="icon">${extIcon(f.name)}</div>
       <div class="name" title="${f.name}">${f.name}</div>
       <div class="meta-wrap"><span class="meta size">${f.sizeText}</span><span class="meta time">${fmtTime(f.modified)}</span></div>
@@ -733,6 +854,16 @@
         </button>
       </div>`
     row.querySelector('.name').onclick = () => openFile(f)
+    row.querySelector('.chk').onchange = (e) => {
+      if (e.target.checked) selected.add(f.path)
+      else selected.delete(f.path)
+      row.classList.toggle('selected', e.target.checked)
+      updateSelBar()
+    }
+    if (selected.has(f.path)) {
+      row.querySelector('.chk').checked = true
+      row.classList.add('selected')
+    }
     const copyBtn = row.querySelector('.copy-btn')
     copyBtn.onclick = async () => {
       const ok = await copyText(f.url)
@@ -784,6 +915,7 @@
       try { await loadBuckets() } catch {}
     }
     $('bucket-select').value = bucket
+    clearSelection()
     $('loading').hidden = false
     $('rows').innerHTML = ''
     $('stats').textContent = ''
@@ -796,6 +928,8 @@
       rows.innerHTML = ''
       const dirs = data.dirs.filter((d) => matchFilter(d.name))
       const files = data.files.filter((f) => matchFilter(f.name))
+      curFiles = files
+      updateSelBar()
 
       if (!dirs.length && !files.length) {
         rows.innerHTML = `<div class="empty"><div class="big">🫙</div>这个目录是空的</div>`
@@ -883,7 +1017,9 @@
     if (e.target === $v.overlay) closeViewer()
   })
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$v.overlay.hidden) closeViewer()
+    if (e.key !== 'Escape') return
+    if (!$v.overlay.hidden) closeViewer()
+    else if (!$('move-overlay').hidden) closeMoveModal()
   })
 
   function showDownloadPrompt(f, reason) {
@@ -1057,12 +1193,185 @@
     }
   }
 
-  // ---------- 删除确认 ----------
-  let pendingDelete = null
+  // ---------- 多选 + 批量操作 ----------
+  let selected = new Set() // 当前桶内已选文件的完整 key
+  let curFiles = []        // 当前目录（筛选后）的文件列表
 
-  function openDeleteModal(f) {
-    pendingDelete = { bucket: currentBucket(), key: f.path, name: f.name }
-    $('modal-desc').textContent = `${pendingDelete.bucket} / ${f.path}`
+  function updateSelBar() {
+    const bar = $('sel-bar')
+    const n = selected.size
+    bar.hidden = n === 0
+    if (n > 0) $('sel-count').textContent = `已选 ${n} 项`
+    // 全选按钮：仅当目录里有文件时显示，文案随状态切换
+    const toggle = $('sel-all-toggle')
+    toggle.hidden = curFiles.length === 0
+    toggle.textContent = curFiles.length > 0 && curFiles.every((f) => selected.has(f.path))
+      ? '取消全选'
+      : '全选'
+  }
+
+  function clearSelection() {
+    selected.clear()
+    updateSelBar()
+  }
+
+  $('sel-all-toggle').onclick = () => {
+    const all = curFiles.length > 0 && curFiles.every((f) => selected.has(f.path))
+    if (all) {
+      curFiles.forEach((f) => selected.delete(f.path))
+    } else {
+      curFiles.forEach((f) => selected.add(f.path))
+    }
+    // 同步复选框 UI
+    document.querySelectorAll('#rows .row.file').forEach((r) => {
+      const name = r.querySelector('.name').textContent
+      const f = curFiles.find((x) => x.name === name)
+      if (!f) return
+      const chk = r.querySelector('.chk')
+      chk.checked = selected.has(f.path)
+      r.classList.toggle('selected', chk.checked)
+    })
+    updateSelBar()
+  }
+
+  $('sel-cancel').onclick = () => {
+    clearSelection()
+    document.querySelectorAll('#rows .row.file').forEach((r) => {
+      r.classList.remove('selected')
+      const chk = r.querySelector('.chk')
+      if (chk) chk.checked = false
+    })
+  }
+
+  $('sel-del').onclick = () => {
+    const files = curFiles.filter((f) => selected.has(f.path))
+    if (!files.length) return
+    openDeleteModal(files)
+  }
+
+  $('sel-move').onclick = () => {
+    const files = curFiles.filter((f) => selected.has(f.path))
+    if (!files.length) return
+    openMoveModal(files)
+  }
+
+  // ---------- 移动目标选择 ----------
+  let moveState = null // { files, target }
+
+  function openMoveModal(files) {
+    moveState = { files, target: parseHash().prefix }
+    $('mv-sub').textContent = `已选 ${files.length} 个文件，选择目标文件夹`
+    renderMoveCrumbs()
+    loadMoveDirs(moveState.target)
+    $('mv-confirm').disabled = false
+    $('move-overlay').hidden = false
+  }
+
+  function closeMoveModal() {
+    moveState = null
+    $('move-overlay').hidden = true
+  }
+
+  function renderMoveCrumbs() {
+    const el = $('mv-crumbs')
+    el.innerHTML = ''
+    const mk = (name, path, cur) => {
+      const b = document.createElement('button')
+      b.textContent = name
+      if (cur) b.className = 'cur'
+      else b.onclick = () => { moveState.target = path; renderMoveCrumbs(); loadMoveDirs(path) }
+      el.appendChild(b)
+    }
+    mk('根目录', '', moveState.target === '')
+    let acc = ''
+    for (const seg of moveState.target.split('/').filter(Boolean)) {
+      acc += seg + '/'
+      const span = document.createElement('span')
+      span.className = 'sep'
+      span.textContent = '/'
+      el.appendChild(span)
+      mk(seg, acc, moveState.target === acc)
+    }
+  }
+
+  async function loadMoveDirs(prefix) {
+    const list = $('mv-list')
+    list.innerHTML = '<div class="mv-empty">加载中…</div>'
+    try {
+      const data = await api('/api/list?bucket=' + encodeURIComponent(currentBucket()) + '&prefix=' + encodeURIComponent(prefix))
+      list.innerHTML = ''
+      const dirs = data.dirs || []
+      if (!dirs.length) {
+        list.innerHTML = '<div class="mv-empty">这里没有子文件夹，可以直接移动到当前浏览的位置</div>'
+        return
+      }
+      dirs.forEach((d) => {
+        const row = document.createElement('div')
+        row.className = 'mv-row'
+        row.innerHTML = `<span>📁</span><span>${esc(d.name)}</span>`
+        row.onclick = () => { moveState.target = d.path; renderMoveCrumbs(); loadMoveDirs(d.path) }
+        list.appendChild(row)
+      })
+    } catch (e) {
+      if (e.message !== 'unauthorized') list.innerHTML = `<div class="mv-empty">加载失败：${esc(e.message)}</div>`
+    }
+  }
+
+  $('mv-cancel').onclick = closeMoveModal
+  $('move-overlay').addEventListener('click', (e) => {
+    if (e.target === $('move-overlay')) closeMoveModal()
+  })
+
+  $('mv-confirm').onclick = async () => {
+    if (!moveState) return
+    const bucket = currentBucket()
+    const items = moveState.files
+      .map((f) => ({ from: f.path, to: moveState.target + f.name }))
+      .filter((it) => it.from !== it.to)
+    if (!items.length) {
+      toast('目标位置与当前位置相同')
+      return
+    }
+    const btn = $('mv-confirm')
+    btn.disabled = true
+    btn.textContent = '移动中…'
+    try {
+      const res = await api('/api/move', {
+        method: 'POST',
+        body: JSON.stringify({ bucket, items }),
+      })
+      closeMoveModal()
+      clearSelection()
+      document.querySelectorAll('#rows .row.file').forEach((r) => {
+        r.classList.remove('selected')
+        const chk = r.querySelector('.chk')
+        if (chk) chk.checked = false
+      })
+      if (res.failed && res.failed.length) {
+        toast(`已移动 ${res.moved} 个，${res.failed.length} 个失败：${res.failed[0].reason}`)
+      } else {
+        toast(`已移动 ${res.moved} 个文件到 ${moveState.target || '根目录'}`)
+      }
+      routeLoad()
+    } catch (e) {
+      if (e.message !== 'unauthorized') toast('移动失败：' + e.message)
+    } finally {
+      btn.disabled = false
+      btn.textContent = '移动到此处'
+    }
+  }
+
+  // ---------- 删除确认 ----------
+  let pendingDelete = null // { bucket, keys: [], name }
+
+  function openDeleteModal(files) {
+    const arr = Array.isArray(files) ? files : [files]
+    const bucket = currentBucket()
+    pendingDelete = { bucket, keys: arr.map((f) => f.path), name: arr[0].name }
+    $('modal-desc').textContent =
+      arr.length === 1
+        ? `${bucket} / ${arr[0].path}`
+        : `已选 ${arr.length} 个文件：${arr.slice(0, 3).map((f) => f.name).join('、')}${arr.length > 3 ? ' …' : ''}`
     $('modal-input').value = ''
     $('modal-confirm').disabled = true
     $('modal-overlay').hidden = false
@@ -1087,15 +1396,33 @@
 
   $('modal-confirm').onclick = async () => {
     if (!pendingDelete) return
-    const { bucket, key, name } = pendingDelete
+    const { bucket, keys, name } = pendingDelete
     $('modal-confirm').disabled = true
     $('modal-confirm').textContent = '删除中…'
     try {
-      await api('/api/object?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(key), {
-        method: 'DELETE',
-      })
+      if (keys.length === 1) {
+        await api('/api/object?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(keys[0]), {
+          method: 'DELETE',
+        })
+        toast('已删除：' + name)
+      } else {
+        const res = await api('/api/delete-batch', {
+          method: 'POST',
+          body: JSON.stringify({ bucket, keys }),
+        })
+        if (res.failed && res.failed.length) {
+          toast(`已删除 ${res.deleted} 个，${res.failed.length} 个失败：${res.failed[0].message}`)
+        } else {
+          toast(`已删除 ${res.deleted} 个文件`)
+        }
+      }
       closeModal()
-      toast('已删除：' + name)
+      clearSelection()
+      document.querySelectorAll('#rows .row.file').forEach((r) => {
+        r.classList.remove('selected')
+        const chk = r.querySelector('.chk')
+        if (chk) chk.checked = false
+      })
       routeLoad()
     } catch (e) {
       if (e.message !== 'unauthorized') {

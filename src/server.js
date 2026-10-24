@@ -9,6 +9,8 @@ import {
   HeadObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
+  CopyObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import crypto from 'node:crypto'
@@ -216,6 +218,60 @@ app.delete('/api/object', authGuard, async (c) => {
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
   statsCache.delete(bucket)
   return c.json({ ok: true })
+})
+
+// 批量删除（DeleteObjects，单次最多 500 个）
+app.post('/api/delete-batch', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const keys = (body.keys || []).filter((k) => typeof k === 'string' && k && !k.endsWith('/'))
+  if (!bucket || !keys.length) return c.json({ error: 'missing bucket/keys' }, 400)
+  if (keys.length > 500) return c.json({ error: '单次最多删除 500 个文件' }, 400)
+
+  const res = await s3.send(
+    new DeleteObjectsCommand({
+      Bucket: bucket,
+      Delete: { Objects: keys.map((k) => ({ Key: k })), Quiet: true },
+    })
+  )
+  const errors = (res.Errors || []).map((e) => ({ key: e.Key, message: e.Message }))
+  statsCache.delete(bucket)
+  return c.json({ ok: errors.length === 0, deleted: keys.length - errors.length, errors })
+})
+
+// 移动 / 重命名（CopyObject + DeleteObject，单次最多 100 个）
+app.post('/api/move', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const items = Array.isArray(body.items) ? body.items : []
+  if (!bucket || !items.length) return c.json({ error: 'missing bucket/items' }, 400)
+  if (items.length > 100) return c.json({ error: '单次最多移动 100 个文件' }, 400)
+
+  const failed = []
+  let moved = 0
+  for (const it of items) {
+    const from = String(it.from || '')
+    const to = String(it.to || '')
+    if (!from || !to || from.endsWith('/') || to.endsWith('/') || from === to || to.includes('//')) {
+      failed.push({ from, to, reason: '参数不合法' })
+      continue
+    }
+    try {
+      await s3.send(
+        new CopyObjectCommand({
+          Bucket: bucket,
+          CopySource: `/${bucket}/${from.split('/').map(encodeURIComponent).join('/')}`,
+          Key: to,
+        })
+      )
+      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: from }))
+      moved++
+    } catch (e) {
+      failed.push({ from, to, reason: e.message || 'unknown error' })
+    }
+  }
+  statsCache.delete(bucket)
+  return c.json({ ok: failed.length === 0, moved, failed })
 })
 
 // list（按桶）

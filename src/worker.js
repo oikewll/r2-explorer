@@ -221,6 +221,75 @@ app.delete('/api/object', authGuard, async (c) => {
   return c.json({ ok: true })
 })
 
+// 批量删除（S3 DeleteObjects，单次最多 500 个）
+app.post('/api/delete-batch', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const keys = (body.keys || []).filter((k) => typeof k === 'string' && k && !k.endsWith('/'))
+  if (!bucket || !keys.length) return c.json({ error: 'missing bucket/keys' }, 400)
+  if (keys.length > 500) return c.json({ error: '单次最多删除 500 个文件' }, 400)
+
+  const escXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>${keys
+    .map((k) => `<Object><Key>${escXml(k)}</Key></Object>`)
+    .join('')}</Delete>`
+  const res = await c._r2.fetch(`${c._s3Base}/${bucket}?delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/xml' },
+    body: xml,
+  })
+  if (!res.ok) return c.json({ error: `DeleteObjects failed: ${res.status}` }, 500)
+  const rxml = await res.text()
+  const errors = xmlBlocks(rxml, 'Error').map((e) => ({
+    key: xmlPick(e, 'Key'),
+    message: xmlPick(e, 'Message') || xmlPick(e, 'Error'),
+  }))
+  await caches.default.delete(statsCacheKey(bucket))
+  return c.json({ ok: errors.length === 0, deleted: keys.length - errors.length, errors })
+})
+
+// 移动 / 重命名（CopyObject + DeleteObject，单次最多 100 个）
+app.post('/api/move', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const items = Array.isArray(body.items) ? body.items : []
+  if (!bucket || !items.length) return c.json({ error: 'missing bucket/items' }, 400)
+  if (items.length > 100) return c.json({ error: '单次最多移动 100 个文件' }, 400)
+
+  const failed = []
+  let moved = 0
+  for (const it of items) {
+    const from = String(it.from || '')
+    const to = String(it.to || '')
+    if (!from || !to || from.endsWith('/') || to.endsWith('/') || from === to || to.includes('//')) {
+      failed.push({ from, to, reason: '参数不合法' })
+      continue
+    }
+    try {
+      const res = await c._r2.fetch(objUrl(c, bucket, to), {
+        method: 'PUT',
+        headers: {
+          'x-amz-copy-source': `/${bucket}/${from.split('/').map(encodeURIComponent).join('/')}`,
+        },
+      })
+      if (!res.ok) {
+        failed.push({ from, to, reason: `CopyObject failed: ${res.status}` })
+        continue
+      }
+      const del = await c._r2.fetch(objUrl(c, bucket, from), { method: 'DELETE' })
+      if (!del.ok && del.status !== 204) {
+        failed.push({ from, to, reason: '复制成功但删除源文件失败' })
+        continue
+      }
+      moved++
+    } catch (e) {
+      failed.push({ from, to, reason: e.message || 'unknown error' })
+    }
+  }
+  await caches.default.delete(statsCacheKey(bucket))
+  return c.json({ ok: failed.length === 0, moved, failed })
+})
+
 // file URL：有 CDN 自定义域就用它，否则给 7 天预签名直链
 async function fileUrl(c, bucket, key) {
   const encoded = key.split('/').map(encodeURIComponent).join('/')
