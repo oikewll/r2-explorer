@@ -290,6 +290,29 @@ app.post('/api/move', authGuard, async (c) => {
   return c.json({ ok: failed.length === 0, moved, failed })
 })
 
+// 上传文件（Worker 代理转发到 R2，单文件上限 100MB）
+app.post('/api/upload', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  if (key.endsWith('/')) return c.json({ error: 'bad key' }, 400)
+  const len = Number(c.req.header('content-length') || 0)
+  if (len > UPLOAD_CAP) return c.json({ error: '单文件最大 100MB' }, 413)
+
+  const body = await c.req.arrayBuffer()
+  const res = await c._r2.fetch(objUrl(c, bucket, key), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': c.req.header('content-type') || 'application/octet-stream',
+      'Content-Length': String(body.byteLength),
+    },
+    body,
+  })
+  if (!res.ok) return c.json({ error: `PutObject failed: ${res.status}` }, 500)
+  await caches.default.delete(statsCacheKey(bucket))
+  return c.json({ ok: true, key })
+})
+
 // file URL：有 CDN 自定义域就用它，否则给 7 天预签名直链
 async function fileUrl(c, bucket, key) {
   const encoded = key.split('/').map(encodeURIComponent).join('/')
@@ -412,6 +435,7 @@ const MIME = {
 }
 const TEXT_CAP = 2 * 1024 * 1024       // 文本预览上限 2MB
 const ENTRY_CAP = 100 * 1024 * 1024    // zip 条目解压上限 100MB
+const UPLOAD_CAP = 100 * 1024 * 1024   // 上传单文件上限 100MB
 
 function mimeFor(name) {
   const ext = (name.split('.').pop() || '').toLowerCase()

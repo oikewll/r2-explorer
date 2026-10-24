@@ -11,6 +11,7 @@ import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
   CopyObjectCommand,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import crypto from 'node:crypto'
@@ -272,6 +273,28 @@ app.post('/api/move', authGuard, async (c) => {
   }
   statsCache.delete(bucket)
   return c.json({ ok: failed.length === 0, moved, failed })
+})
+
+// 上传文件（单文件上限 100MB）
+app.post('/api/upload', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  if (key.endsWith('/')) return c.json({ error: 'bad key' }, 400)
+  const len = Number(c.req.header('content-length') || 0)
+  if (len > 100 * 1024 * 1024) return c.json({ error: '单文件最大 100MB' }, 413)
+
+  const body = await c.req.arrayBuffer()
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: Buffer.from(body),
+      ContentType: c.req.header('content-type') || 'application/octet-stream',
+    })
+  )
+  statsCache.delete(bucket)
+  return c.json({ ok: true, key })
 })
 
 // list（按桶）

@@ -493,6 +493,77 @@
   .mv-empty { padding: 24px; text-align: center; color: var(--text-2); font-size: 13px; }
   .move-modal .mv-note { font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
 
+  /* 上传 */
+  #drop-overlay {
+    position: fixed; inset: 0;
+    background: rgba(79, 110, 247, .12);
+    backdrop-filter: blur(2px);
+    border: 3px dashed var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 180;
+    pointer-events: none;
+  }
+  #drop-overlay .drop-hint {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 28px 40px;
+    text-align: center;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, .2);
+    font-weight: 600; font-size: 16px;
+  }
+  #drop-overlay .drop-hint .big { font-size: 40px; margin-bottom: 8px; }
+  #drop-overlay .drop-hint .sub { font-size: 13px; color: var(--text-2); font-weight: 400; margin-top: 4px; }
+
+  #upload-panel {
+    position: fixed;
+    right: 18px; bottom: 18px;
+    width: 320px; max-width: calc(100vw - 24px);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(16, 24, 40, .18);
+    z-index: 190;
+    overflow: hidden;
+  }
+  #upload-panel .up-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px; font-weight: 600;
+  }
+  #upload-panel .up-head .up-close {
+    color: var(--text-2); font-size: 15px;
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+  }
+  #upload-panel .up-head .up-close:hover { background: var(--hover); color: var(--text); }
+  #upload-panel .up-list { max-height: 240px; overflow: auto; }
+  .up-item { padding: 9px 14px; border-bottom: 1px solid var(--border); }
+  .up-item:last-child { border-bottom: none; }
+  .up-item .u-row1 {
+    display: flex; justify-content: space-between; gap: 8px;
+    font-size: 13px;
+    margin-bottom: 5px;
+  }
+  .up-item .u-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .up-item .u-pct { color: var(--text-2); flex: none; }
+  .up-item .u-bar {
+    height: 5px; border-radius: 3px;
+    background: var(--hover);
+    overflow: hidden;
+  }
+  .up-item .u-fill {
+    height: 100%; width: 0%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width .15s;
+  }
+  .up-item.done .u-fill { background: #16a34a; }
+  .up-item.done .u-pct { color: #16a34a; }
+  .up-item.fail .u-fill { background: var(--danger); }
+  .up-item.fail .u-pct { color: var(--danger); }
+
   /* toast */
   #toast {
     position: fixed;
@@ -574,7 +645,9 @@
   <div id="browser" hidden>
     <div class="toolbar">
       <input type="search" id="search" placeholder="筛选当前目录文件…" autocomplete="off">
+      <button class="sel-all-btn" id="upload-btn" title="上传到当前目录">⬆ 上传</button>
       <button class="sel-all-btn" id="sel-all-toggle" hidden>全选</button>
+      <input type="file" id="upload-input" multiple hidden>
     </div>
     <nav class="crumbs" id="crumbs"></nav>
     <div class="list-card" id="list-card">
@@ -652,6 +725,24 @@
       <button class="btn-primary" id="rename-confirm" disabled style="padding:9px 18px">确 定</button>
     </div>
   </div>
+</div>
+
+<!-- 拖曳上传浮层 -->
+<div id="drop-overlay" hidden>
+  <div class="drop-hint">
+    <div class="big">📤</div>
+    松开上传到当前目录
+    <div class="sub" id="drop-target"></div>
+  </div>
+</div>
+
+<!-- 上传进度面板 -->
+<div id="upload-panel" hidden>
+  <div class="up-head">
+    <span id="up-title">上传中…</span>
+    <button class="up-close" id="up-close">✕</button>
+  </div>
+  <div class="up-list" id="up-list"></div>
 </div>
 
 <div id="toast"></div>
@@ -1538,6 +1629,139 @@
       btn.textContent = '确 定'
     }
   }
+
+  // ---------- 上传 ----------
+  let uploadQueue = [] // { file, name, key, itemEl, fillEl, pctEl, status }
+
+  function fmtUploadTitle() {
+    const total = uploadQueue.length
+    const done = uploadQueue.filter((t) => t.status === 'done').length
+    const fail = uploadQueue.filter((t) => t.status === 'fail').length
+    if (done + fail === total) {
+      return `上传完成：${done} 成功${fail ? `，${fail} 失败` : ''}`
+    }
+    return `上传中… ${done + fail}/${total}`
+  }
+
+  function uploadOne(task) {
+    return new Promise((resolve, reject) => {
+      const bucket = currentBucket()
+      const xhr = new XMLHttpRequest()
+      task.xhr = xhr
+      xhr.open('POST', '/api/upload?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(task.key))
+      xhr.setRequestHeader('Content-Type', task.file.type || 'application/octet-stream')
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100)
+          task.fillEl.style.width = pct + '%'
+          task.pctEl.textContent = pct + '%'
+        }
+      }
+      xhr.onload = () => {
+        if (xhr.status < 400) return resolve()
+        let msg = '上传失败 (' + xhr.status + ')'
+        try { msg = JSON.parse(xhr.responseText).error || msg } catch {}
+        reject(new Error(msg))
+      }
+      xhr.onerror = () => reject(new Error('网络错误'))
+      xhr.send(task.file)
+    })
+  }
+
+  async function startUpload(files) {
+    const bucket = currentBucket()
+    if (!bucket) return
+    const prefix = parseHash().prefix
+    const fresh = [...files].filter((f) => f.size <= 100 * 1024 * 1024)
+    const tooBig = files.length - fresh.length
+    if (!fresh.length) {
+      toast('文件超过 100MB 上限')
+      return
+    }
+    // 追加到面板
+    const list = $('up-list')
+    const newTasks = fresh.map((file) => {
+      const task = { file, name: file.name, key: prefix + file.name, status: 'pending' }
+      const item = document.createElement('div')
+      item.className = 'up-item'
+      item.innerHTML = `
+        <div class="u-row1">
+          <span class="u-name" title="${esc(file.name)}">${esc(file.name)}</span>
+          <span class="u-pct">0%</span>
+        </div>
+        <div class="u-bar"><div class="u-fill"></div></div>`
+      task.itemEl = item
+      task.fillEl = item.querySelector('.u-fill')
+      task.pctEl = item.querySelector('.u-pct')
+      list.appendChild(item)
+      uploadQueue.push(task)
+      return task
+    })
+    $('up-title').textContent = fmtUploadTitle()
+    $('upload-panel').hidden = false
+    if (tooBig > 0) toast(`${tooBig} 个文件超过 100MB 上限，已跳过`)
+
+    // 串行上传，避免占满带宽/内存
+    for (const task of newTasks) {
+      if (task.status !== 'pending') continue
+      task.status = 'uploading'
+      try {
+        await uploadOne(task)
+        task.status = 'done'
+        task.itemEl.classList.add('done')
+        task.fillEl.style.width = '100%'
+        task.pctEl.textContent = '完成'
+      } catch (e) {
+        task.status = 'fail'
+        task.itemEl.classList.add('fail')
+        task.pctEl.textContent = '失败'
+        task.itemEl.title = e.message
+      }
+      $('up-title').textContent = fmtUploadTitle()
+    }
+    const okCount = newTasks.filter((t) => t.status === 'done').length
+    if (okCount > 0) {
+      toast(`已上传 ${okCount} 个文件到 ${prefix || '根目录'}`)
+      routeLoad()
+    }
+  }
+
+  $('upload-btn').onclick = () => $('upload-input').click()
+  $('upload-input').addEventListener('change', (e) => {
+    if (e.target.files.length) startUpload(e.target.files)
+    e.target.value = '' // 允许重复选择同一文件
+  })
+  $('up-close').onclick = () => {
+    uploadQueue.filter((t) => t.status === 'uploading' && t.xhr).forEach((t) => t.xhr.abort())
+    uploadQueue = []
+    $('upload-panel').hidden = true
+    $('up-list').innerHTML = ''
+  }
+
+  // 拖曳上传
+  let dragDepth = 0
+  window.addEventListener('dragenter', (e) => {
+    if (![...e.dataTransfer?.types || []].includes('Files')) return
+    if (!parseHash().bucket) return
+    dragDepth++
+    $('drop-target').textContent = currentBucket() + ' / ' + (parseHash().prefix || '')
+    $('drop-overlay').hidden = false
+  })
+  window.addEventListener('dragleave', (e) => {
+    dragDepth--
+    if (dragDepth <= 0) {
+      dragDepth = 0
+      $('drop-overlay').hidden = true
+    }
+  })
+  window.addEventListener('dragover', (e) => e.preventDefault())
+  window.addEventListener('drop', (e) => {
+    e.preventDefault()
+    dragDepth = 0
+    $('drop-overlay').hidden = true
+    const files = [...(e.dataTransfer?.files || [])]
+    if (files.length && parseHash().bucket) startUpload(files)
+  })
 
   // ---------- events ----------
   $('search').addEventListener('input', applyFilter)
