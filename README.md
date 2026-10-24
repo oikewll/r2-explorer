@@ -19,6 +19,21 @@ wrangler secret put R2_SECRET_ACCESS_KEY
 
 `wrangler.toml` 里的 vars：`R2_ACCOUNT_ID`、`R2_CDN_MAP`（JSON，桶名 → CDN 域）。
 
+## CI/CD（GitHub Actions）
+
+打 `v*` tag 推送即自动部署 Worker，成功/失败都会推 Telegram 通知：
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+需要两个仓库 Actions secrets：
+
+| Secret | 说明 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | API Token，用 Cloudflare 预设模板「编辑 Cloudflare Workers」，需包含 Workers Scripts:Edit、Workers Routes:Edit |
+| `TELEGRAM_WEBHOOK_URL` | `https://REDACTED_WEBHOOK_URL`（自建通知通道，见内部文档） |
+
 ## 本地开发
 
 ```bash
