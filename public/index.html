@@ -123,6 +123,25 @@
     transition: border-color .15s, box-shadow .15s;
   }
   #search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .sort-select {
+    padding: 9px 30px 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background-color: var(--card);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    cursor: pointer;
+    flex: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .sort-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
   /* breadcrumb */
   .crumbs {
@@ -594,6 +613,8 @@
   @media (max-width: 640px) {
     body { font-size: 14px; }
     #main-view { padding: 14px 12px 40px; }
+    .toolbar { flex-wrap: wrap; }
+    #search { flex: 1 1 150px; }
     #overview { grid-template-columns: 1fr; }
     .row {
       grid-template-columns: 24px 36px 1fr auto;
@@ -652,6 +673,14 @@
   <div id="browser" hidden>
     <div class="toolbar">
       <input type="search" id="search" placeholder="筛选当前目录文件…" autocomplete="off">
+      <select id="sort-select" class="sort-select" title="排序方式">
+        <option value="name-asc">名称 ↑</option>
+        <option value="name-desc">名称 ↓</option>
+        <option value="time-desc">时间 ↓</option>
+        <option value="time-asc">时间 ↑</option>
+        <option value="size-desc">大小 ↓</option>
+        <option value="size-asc">大小 ↑</option>
+      </select>
       <button class="sel-all-btn" id="upload-btn" title="上传到当前目录" style="display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传</button>
       <button class="sel-all-btn" id="sel-all-toggle" hidden>全选</button>
       <input type="file" id="upload-input" multiple hidden>
@@ -1084,6 +1113,51 @@
     })
   }
 
+  // ---------- 排序 ----------
+  let sortMode = localStorage.getItem('r2x-sort') || 'name-asc'
+  let lastList = null // 最近一次目录数据，排序切换时免重新请求
+
+  function sortFiles(files) {
+    const arr = [...files]
+    const byName = (a, b) => a.name.localeCompare(b.name)
+    switch (sortMode) {
+      case 'name-desc': arr.sort((a, b) => byName(b, a)); break
+      case 'time-asc': arr.sort((a, b) => new Date(a.modified) - new Date(b.modified)); break
+      case 'time-desc': arr.sort((a, b) => new Date(b.modified) - new Date(a.modified)); break
+      case 'size-asc': arr.sort((a, b) => a.size - b.size); break
+      case 'size-desc': arr.sort((a, b) => b.size - a.size); break
+      default: arr.sort(byName)
+    }
+    return arr
+  }
+
+  function renderList(data) {
+    renderCrumbs(data.crumbs)
+    const rows = $('rows')
+    rows.innerHTML = ''
+    const dirs = data.dirs.filter((d) => matchFilter(d.name))
+    const files = sortFiles(data.files).filter((f) => matchFilter(f.name))
+    curFiles = files
+    updateSelBar()
+
+    if (!dirs.length && !files.length) {
+      rows.innerHTML = `<div class="empty"><div style="display:flex;justify-content:center;margin-bottom:10px">${ficon('folder', 56)}</div>这个目录是空的</div>`
+      $('stats').textContent = ''
+      return
+    }
+    dirs.forEach((d) => rows.appendChild(dirRow(d)))
+    files.forEach((f) => rows.appendChild(fileRow(f)))
+    const total = files.reduce((s, f) => s + f.size, 0)
+    $('stats').textContent = `${dirs.length} 个文件夹 · ${files.length} 个文件 · 共 ${fmtSize(total)}`
+  }
+
+  $('sort-select').value = sortMode
+  $('sort-select').addEventListener('change', (e) => {
+    sortMode = e.target.value
+    localStorage.setItem('r2x-sort', sortMode)
+    if (lastList) renderList(lastList)
+  })
+
   async function routeLoad() {
     const { bucket, prefix } = parseHash()
     if (!bucket) {
@@ -1102,23 +1176,8 @@
     try {
       const data = await api('/api/list?bucket=' + encodeURIComponent(bucket) + '&prefix=' + encodeURIComponent(prefix))
       $('loading').hidden = true
-      renderCrumbs(data.crumbs)
-
-      const rows = $('rows')
-      rows.innerHTML = ''
-      const dirs = data.dirs.filter((d) => matchFilter(d.name))
-      const files = data.files.filter((f) => matchFilter(f.name))
-      curFiles = files
-      updateSelBar()
-
-      if (!dirs.length && !files.length) {
-        rows.innerHTML = `<div class="empty"><div style="display:flex;justify-content:center;margin-bottom:10px">${ficon('folder', 56)}</div>这个目录是空的</div>`
-      } else {
-        dirs.forEach((d) => rows.appendChild(dirRow(d)))
-        files.forEach((f) => rows.appendChild(fileRow(f)))
-        const total = files.reduce((s, f) => s + f.size, 0)
-        $('stats').textContent = `${dirs.length} 个文件夹 · ${files.length} 个文件 · 共 ${fmtSize(total)}`
-      }
+      lastList = data
+      renderList(data)
       window.scrollTo({ top: 0 })
     } catch (e) {
       if (e.message !== 'unauthorized') {
