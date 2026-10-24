@@ -172,7 +172,7 @@
     cursor: pointer;
     flex: none;
   }
-  .copy-btn, .del-btn {
+  .copy-btn, .del-btn, .rename-btn {
     width: 32px; height: 32px;
     display: inline-flex; align-items: center; justify-content: center;
     border-radius: 8px; color: var(--text-2);
@@ -180,7 +180,19 @@
   }
   .copy-btn:hover { background: var(--accent-soft); color: var(--accent); }
   .copy-btn.copied { color: #16a34a; }
+  .rename-btn:hover { background: var(--accent-soft); color: var(--accent); }
   .del-btn:hover { background: var(--danger-soft); color: var(--danger); }
+
+  /* 重命名模态框 */
+  #rename-overlay {
+    position: fixed; inset: 0;
+    background: rgba(16, 24, 40, .45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    z-index: 220;
+  }
+  #rename-overlay .modal h3 { color: var(--text); }
+  #rename-error { color: var(--danger); font-size: 13px; margin-top: 8px; min-height: 18px; }
 
   .empty {
     padding: 56px 20px;
@@ -523,7 +535,7 @@
     .row .size { min-width: 0; text-align: left; display: inline; }
     .row .time { min-width: 0; text-align: left; display: inline; }
     .row .time::before { content: " · "; }
-    .copy-btn, .del-btn { width: 30px; height: 30px; }
+    .copy-btn, .del-btn, .rename-btn { width: 30px; height: 30px; }
     .brand { font-size: 15px; }
     #bucket-select { max-width: 130px; }
   }
@@ -624,6 +636,20 @@
     <div class="modal-actions">
       <button id="mv-cancel">取 消</button>
       <button class="btn-primary" id="mv-confirm" style="padding:9px 18px">移动到此处</button>
+    </div>
+  </div>
+</div>
+
+<!-- 重命名 -->
+<div id="rename-overlay" hidden>
+  <div class="modal">
+    <h3>重命名</h3>
+    <div class="modal-desc" id="rename-desc"></div>
+    <input type="text" id="rename-input" autocomplete="off" spellcheck="false">
+    <div id="rename-error"></div>
+    <div class="modal-actions">
+      <button id="rename-cancel">取 消</button>
+      <button class="btn-primary" id="rename-confirm" disabled style="padding:9px 18px">确 定</button>
     </div>
   </div>
 </div>
@@ -849,6 +875,9 @@
         <button class="copy-btn" title="复制直链">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         </button>
+        <button class="rename-btn" title="重命名">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+        </button>
         <button class="del-btn" title="删除文件">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
@@ -876,6 +905,7 @@
       }
     }
     row.querySelector('.del-btn').onclick = () => openDeleteModal(f)
+    row.querySelector('.rename-btn').onclick = () => openRenameModal(f)
     return row
   }
 
@@ -1020,6 +1050,7 @@
     if (e.key !== 'Escape') return
     if (!$v.overlay.hidden) closeViewer()
     else if (!$('move-overlay').hidden) closeMoveModal()
+    else if (!$('rename-overlay').hidden) closeRenameModal()
   })
 
   function showDownloadPrompt(f, reason) {
@@ -1431,6 +1462,80 @@
       }
     } finally {
       $('modal-confirm').textContent = '删 除'
+    }
+  }
+
+  // ---------- 重命名 ----------
+  let pendingRename = null // { from, to, oldName }
+
+  function openRenameModal(f) {
+    const prefix = f.path.slice(0, f.path.length - f.name.length)
+    pendingRename = { from: f.path, to: '', oldName: f.name, prefix }
+    $('rename-desc').textContent = f.path
+    $('rename-input').value = f.name
+    $('rename-error').textContent = ''
+    $('rename-confirm').disabled = true
+    $('rename-overlay').hidden = false
+    const input = $('rename-input')
+    input.focus()
+    // 选中主文件名（不含扩展名），方便直接改
+    const dot = f.name.lastIndexOf('.')
+    input.setSelectionRange(0, dot > 0 ? dot : f.name.length)
+  }
+
+  function closeRenameModal() {
+    pendingRename = null
+    $('rename-overlay').hidden = true
+  }
+
+  function validateRename() {
+    if (!pendingRename) return
+    const raw = $('rename-input').value
+    const name = raw.trim()
+    const err = $('rename-error')
+    let msg = ''
+    if (!name) msg = '文件名不能为空'
+    else if (name.includes('/')) msg = '文件名不能包含 /'
+    else if (name === '.' || name === '..') msg = '非法文件名'
+    else if (name === pendingRename.oldName) msg = ''
+    else if (curFiles.some((f) => f.name === name)) msg = '当前目录已有同名文件'
+    err.textContent = msg
+    pendingRename.to = msg ? '' : pendingRename.prefix + name
+    $('rename-confirm').disabled = !!msg || name === pendingRename.oldName
+  }
+
+  $('rename-input').addEventListener('input', validateRename)
+  $('rename-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !$('rename-confirm').disabled) $('rename-confirm').click()
+  })
+  $('rename-cancel').onclick = closeRenameModal
+  $('rename-overlay').addEventListener('click', (e) => {
+    if (e.target === $('rename-overlay')) closeRenameModal()
+  })
+
+  $('rename-confirm').onclick = async () => {
+    if (!pendingRename || !pendingRename.to) return
+    const bucket = currentBucket()
+    const { from, to, oldName } = pendingRename
+    const newName = pendingRename.to.slice(pendingRename.prefix.length)
+    const btn = $('rename-confirm')
+    btn.disabled = true
+    btn.textContent = '重命名中…'
+    try {
+      await api('/api/move', {
+        method: 'POST',
+        body: JSON.stringify({ bucket, items: [{ from, to }] }),
+      })
+      closeRenameModal()
+      toast(`已重命名：${oldName} → ${newName}`)
+      routeLoad()
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        $('rename-error').textContent = '重命名失败：' + e.message
+        btn.disabled = false
+      }
+    } finally {
+      btn.textContent = '确 定'
     }
   }
 
