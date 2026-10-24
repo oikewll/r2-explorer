@@ -61,3 +61,8 @@ docker run -d --name r2-explorer -p 3000:3000 \
 | GET | `/api/buckets` | 列出账号下所有桶 |
 | GET | `/api/list?bucket=x&prefix=a/` | 列目录（文件夹 + 文件 + 直链） |
 | GET | `/api/info?bucket=x&key=a/b` | 单文件详情（大小/时间/ETag/类型） |
+| DELETE | `/api/object?bucket=x&key=a/b` | 删除单个文件 |
+| POST | `/api/delete-batch` | `{ bucket, keys: [] }` 批量删除（≤500） |
+| POST | `/api/move` | `{ bucket, items: [{ from, to }] }` 移动/重命名（≤100） |
+| GET | `/api/text?bucket=x&key=a/b` | 文本预览代理（≤2MB） |
+| GET | `/api/zip` / `/api/zip-entry` | 压缩包目录 / 包内文件读取 |
