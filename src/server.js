@@ -12,6 +12,10 @@ import {
   DeleteObjectsCommand,
   CopyObjectCommand,
   PutObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import crypto from 'node:crypto'
@@ -295,6 +299,86 @@ app.post('/api/upload', authGuard, async (c) => {
   )
   statsCache.delete(bucket)
   return c.json({ ok: true, key })
+})
+
+// ---------- 分片上传（大文件：前端切片，R2 S3 multipart API 合并） ----------
+// 初始化
+app.post('/api/multipart/init', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  if (key.endsWith('/')) return c.json({ error: 'bad key' }, 400)
+  try {
+    const res = await s3.send(
+      new CreateMultipartUploadCommand({ Bucket: bucket, Key: key, ContentType: mimeFor(key) })
+    )
+    return c.json({ ok: true, uploadId: res.UploadId })
+  } catch (e) {
+    return c.json({ error: 'CreateMultipartUpload failed: ' + (e.message || e) }, 500)
+  }
+})
+
+// 上传单个分片（≤64MB）
+app.put('/api/multipart/part', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  const uploadId = c.req.query('uploadId')
+  const partNumber = Number(c.req.query('partNumber'))
+  if (!bucket || !key || !uploadId) return c.json({ error: 'missing params' }, 400)
+  if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) {
+    return c.json({ error: 'bad partNumber' }, 400)
+  }
+  const len = Number(c.req.header('content-length') || 0)
+  if (len > 64 * 1024 * 1024) return c.json({ error: '分片最大 64MB' }, 413)
+
+  const body = Buffer.from(await c.req.arrayBuffer())
+  try {
+    const res = await s3.send(
+      new UploadPartCommand({ Bucket: bucket, Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body })
+    )
+    return c.json({ ok: true, partNumber, etag: (res.ETag || '').replace(/"/g, '') })
+  } catch (e) {
+    return c.json({ error: 'UploadPart failed: ' + (e.message || e) }, 500)
+  }
+})
+
+// 完成合并
+app.post('/api/multipart/complete', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  const uploadId = c.req.query('uploadId')
+  if (!bucket || !key || !uploadId) return c.json({ error: 'missing params' }, 400)
+  const body = await c.req.json().catch(() => ({}))
+  const parts = Array.isArray(body.parts) ? body.parts : []
+  if (!parts.length) return c.json({ error: 'missing parts' }, 400)
+  try {
+    await s3.send(
+      new CompleteMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: parts.map((p) => ({ PartNumber: Number(p.partNumber), ETag: `"${String(p.etag).replace(/"/g, '')}"` })),
+        },
+      })
+    )
+    statsCache.delete(bucket)
+    return c.json({ ok: true, key })
+  } catch (e) {
+    return c.json({ error: 'CompleteMultipartUpload failed: ' + (e.message || e) }, 500)
+  }
+})
+
+// 取消/中止（清理已传分片）
+app.post('/api/multipart/abort', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  const uploadId = c.req.query('uploadId')
+  if (!bucket || !key || !uploadId) return c.json({ error: 'missing params' }, 400)
+  try {
+    await s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: key, UploadId: uploadId }))
+  } catch {}
+  return c.json({ ok: true })
 })
 
 // list（按桶）

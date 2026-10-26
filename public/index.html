@@ -594,6 +594,10 @@
     margin-bottom: 5px;
   }
   .up-item .u-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #upload-panel .u-tag {
+    font-size: 10px; font-weight: 600; color: var(--accent);
+    background: var(--accent-soft); border-radius: 4px; padding: 1px 5px; margin-left: 4px;
+  }
   .up-item .u-pct { color: var(--text-2); flex: none; }
   .up-item .u-bar {
     height: 5px; border-radius: 3px;
@@ -1809,6 +1813,9 @@
   // ---------- 上传 ----------
   let uploadQueue = [] // { file, name, key, itemEl, fillEl, pctEl, status }
 
+  const UPLOAD_MULTIPART_THRESHOLD = 50 * 1024 * 1024 // 超过 50MB 走分片上传
+  const UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024          // 分片 16MB
+
   function fmtUploadTitle() {
     const total = uploadQueue.length
     const done = uploadQueue.filter((t) => t.status === 'done').length
@@ -1819,7 +1826,13 @@
     return `上传中… ${done + fail}/${total}`
   }
 
+  function setTaskPct(task, pct) {
+    task.fillEl.style.width = pct + '%'
+    task.pctEl.textContent = pct + '%'
+  }
+
   function uploadOne(task) {
+    if (task.file.size > UPLOAD_MULTIPART_THRESHOLD) return uploadMultipart(task)
     return new Promise((resolve, reject) => {
       const bucket = currentBucket()
       const xhr = new XMLHttpRequest()
@@ -1827,11 +1840,7 @@
       xhr.open('POST', '/api/upload?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(task.key))
       xhr.setRequestHeader('Content-Type', task.file.type || 'application/octet-stream')
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 100)
-          task.fillEl.style.width = pct + '%'
-          task.pctEl.textContent = pct + '%'
-        }
+        if (e.lengthComputable) setTaskPct(task, Math.round((e.loaded / e.total) * 100))
       }
       xhr.onload = () => {
         if (xhr.status < 400) return resolve()
@@ -1844,14 +1853,75 @@
     })
   }
 
+  // 分片上传：init → 逐片 PUT → complete；失败/取消时 abort 清理服务端分片
+  function uploadMultipart(task) {
+    return new Promise(async (resolve, reject) => {
+      const bucket = currentBucket()
+      try {
+        const init = await api('/api/multipart/init?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(task.key), { method: 'POST' })
+        const uploadId = init.uploadId
+        task.uploadId = uploadId
+        const total = task.file.size
+        const partCount = Math.ceil(total / UPLOAD_CHUNK_SIZE)
+        const parts = []
+        let uploadedBytes = 0
+
+        for (let i = 1; i <= partCount; i++) {
+          if (task.cancelled) throw new Error('已取消')
+          const start = (i - 1) * UPLOAD_CHUNK_SIZE
+          const blob = task.file.slice(start, Math.min(start + UPLOAD_CHUNK_SIZE, total))
+          const baseBytes = uploadedBytes
+          const etag = await new Promise((res, rej) => {
+            const xhr = new XMLHttpRequest()
+            task.xhr = xhr
+            xhr.open('PUT', '/api/multipart/part?bucket=' + encodeURIComponent(bucket) +
+              '&key=' + encodeURIComponent(task.key) +
+              '&uploadId=' + encodeURIComponent(uploadId) + '&partNumber=' + i)
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) setTaskPct(task, Math.round(((baseBytes + e.loaded) / total) * 100))
+            }
+            xhr.onload = () => {
+              if (xhr.status < 400) {
+                try { res(JSON.parse(xhr.responseText).etag) } catch { rej(new Error('分片响应解析失败')) }
+              } else {
+                let msg = '分片上传失败 (' + xhr.status + ')'
+                try { msg = JSON.parse(xhr.responseText).error || msg } catch {}
+                rej(new Error(msg))
+              }
+            }
+            xhr.onerror = () => rej(new Error('网络错误'))
+            xhr.send(blob)
+          })
+          parts.push({ partNumber: i, etag })
+          uploadedBytes += blob.size
+        }
+
+        if (task.cancelled) throw new Error('已取消')
+        await api('/api/multipart/complete?bucket=' + encodeURIComponent(bucket) +
+          '&key=' + encodeURIComponent(task.key) + '&uploadId=' + encodeURIComponent(uploadId),
+          { method: 'POST', body: JSON.stringify({ parts }) })
+        resolve()
+      } catch (e) {
+        // 中止：清理服务端已上传分片
+        if (task.uploadId) {
+          api('/api/multipart/abort?bucket=' + encodeURIComponent(bucket) +
+            '&key=' + encodeURIComponent(task.key) + '&uploadId=' + encodeURIComponent(task.uploadId),
+            { method: 'POST' }).catch(() => {})
+        }
+        reject(e)
+      }
+    })
+  }
+
   async function startUpload(files) {
     const bucket = currentBucket()
     if (!bucket) return
     const prefix = parseHash().prefix
-    const fresh = [...files].filter((f) => f.size <= 100 * 1024 * 1024)
-    const tooBig = files.length - fresh.length
+    // 分片上传后不再有大小上限，只过滤空文件
+    const fresh = [...files].filter((f) => f.size > 0)
     if (!fresh.length) {
-      toast('文件超过 100MB 上限')
+      toast('没有可上传的文件')
       return
     }
     // 追加到面板
@@ -1862,7 +1932,7 @@
       item.className = 'up-item'
       item.innerHTML = `
         <div class="u-row1">
-          <span class="u-name" title="${esc(file.name)}">${esc(file.name)}</span>
+          <span class="u-name" title="${esc(file.name)}">${esc(file.name)}${file.size > UPLOAD_MULTIPART_THRESHOLD ? ' <span class="u-tag">分片</span>' : ''}</span>
           <span class="u-pct">0%</span>
         </div>
         <div class="u-bar"><div class="u-fill"></div></div>`
@@ -1875,7 +1945,6 @@
     })
     $('up-title').textContent = fmtUploadTitle()
     $('upload-panel').hidden = false
-    if (tooBig > 0) toast(`${tooBig} 个文件超过 100MB 上限，已跳过`)
 
     // 串行上传，避免占满带宽/内存
     for (const task of newTasks) {
@@ -1908,7 +1977,11 @@
     e.target.value = '' // 允许重复选择同一文件
   })
   $('up-close').onclick = () => {
-    uploadQueue.filter((t) => t.status === 'uploading' && t.xhr).forEach((t) => t.xhr.abort())
+    // 取消分片任务：标记 cancelled，uploadMultipart 会 abort 清理服务端分片
+    uploadQueue.filter((t) => t.status === 'uploading').forEach((t) => {
+      t.cancelled = true
+      if (t.xhr) t.xhr.abort()
+    })
     uploadQueue = []
     $('upload-panel').hidden = true
     $('up-list').innerHTML = ''

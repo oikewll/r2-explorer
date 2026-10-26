@@ -66,3 +66,5 @@ docker run -d --name r2-explorer -p 3000:3000 \
 | POST | `/api/move` | `{ bucket, items: [{ from, to }] }` 移动/重命名（≤100） |
 | GET | `/api/text?bucket=x&key=a/b` | 文本预览代理（≤2MB） |
 | GET | `/api/zip` / `/api/zip-entry` | 压缩包目录 / 包内文件读取 |
+| POST | `/api/upload` | 原始 body 直传，单文件 ≤100MB |
+| POST | `/api/multipart/init` / `part` / `complete` / `abort` | 分片上传（>50MB 自动走此通道，分片 ≤64MB，数量不限） |
