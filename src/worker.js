@@ -248,6 +248,62 @@ app.post('/api/delete-batch', authGuard, async (c) => {
   return c.json({ ok: errors.length === 0, deleted: keys.length - errors.length, errors })
 })
 
+// 删除文件夹（按前缀递归列出所有对象并分批删除）
+app.post('/api/delete-tree', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const prefixes = (body.prefixes || []).filter(
+    (p) => typeof p === 'string' && p && p.endsWith('/')
+  )
+  if (!bucket || !prefixes.length) return c.json({ error: 'missing bucket/prefixes' }, 400)
+
+  const escXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  let deleted = 0
+  const errors = []
+  for (const prefix of prefixes) {
+    let token = null
+    do {
+      // 分页列出该前缀下所有对象（不含 delimiter，递归含子文件夹）
+      const u = new URL(`${c._s3Base}/${bucket}`)
+      u.searchParams.set('list-type', '2')
+      u.searchParams.set('prefix', prefix)
+      u.searchParams.set('max-keys', '1000')
+      if (token) u.searchParams.set('continuation-token', token)
+      const res = await c._r2.fetch(u)
+      if (!res.ok) {
+        errors.push({ prefix, message: `ListObjects failed: ${res.status}` })
+        break
+      }
+      const xml = await res.text()
+      const keys = xmlBlocks(xml, 'Contents').map((o) => xmlPick(o, 'Key')).filter(Boolean)
+      // S3 DeleteObjects 单次上限 1000，按 500 一批删
+      for (let i = 0; i < keys.length; i += 500) {
+        const batch = keys.slice(i, i + 500)
+        const delXml = `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>${batch
+          .map((k) => `<Object><Key>${escXml(k)}</Key></Object>`)
+          .join('')}</Delete>`
+        const del = await c._r2.fetch(`${c._s3Base}/${bucket}?delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/xml' },
+          body: delXml,
+        })
+        if (!del.ok) {
+          errors.push({ prefix, message: `DeleteObjects failed: ${del.status}` })
+          continue
+        }
+        const rxml = await del.text()
+        deleted += batch.length - xmlBlocks(rxml, 'Error').length
+        xmlBlocks(rxml, 'Error').forEach((e) =>
+          errors.push({ key: xmlPick(e, 'Key'), message: xmlPick(e, 'Message') || xmlPick(e, 'Error') })
+        )
+      }
+      token = xmlPick(xml, 'NextContinuationToken') || null
+    } while (token)
+  }
+  if (deleted > 0) await caches.default.delete(statsCacheKey(bucket))
+  return c.json({ ok: errors.length === 0, deleted, errors })
+})
+
 // 移动 / 重命名（CopyObject + DeleteObject，单次最多 100 个）
 app.post('/api/move', authGuard, async (c) => {
   const body = await c.req.json().catch(() => ({}))

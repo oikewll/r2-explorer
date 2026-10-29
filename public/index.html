@@ -723,7 +723,7 @@
 <!-- 删除确认 -->
 <div id="modal-overlay" hidden>
   <div class="modal">
-    <h3>删除文件</h3>
+    <h3>删除确认</h3>
     <div class="modal-desc" id="modal-desc"></div>
     <p class="modal-warn">此操作不可恢复！请输入 <b>delete</b> 确认删除。</p>
     <input type="text" id="modal-input" placeholder="delete" autocomplete="off" spellcheck="false">
@@ -1118,12 +1118,27 @@
     const row = document.createElement('div')
     row.className = 'row dir'
     row.innerHTML = `
-      <div class="chk-spacer" aria-hidden="true"></div>
+      <input type="checkbox" class="chk" title="选择">
       <div class="icon">${ficon('folder')}</div>
       <div class="name" title="${d.name}">${d.name}</div>
       <div class="meta-wrap"><span class="meta size">—</span><span class="meta time">文件夹</span></div>
-      <div class="actions"></div>`
+      <div class="actions">
+        <button class="del-btn" title="删除文件夹（递归删除其中所有文件）">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>`
     row.querySelector('.name').onclick = () => { location.hash = buildHash(currentBucket(), d.path) }
+    row.querySelector('.chk').onchange = (e) => {
+      if (e.target.checked) selected.add(d.path)
+      else selected.delete(d.path)
+      row.classList.toggle('selected', e.target.checked)
+      updateSelBar()
+    }
+    if (selected.has(d.path)) {
+      row.querySelector('.chk').checked = true
+      row.classList.add('selected')
+    }
+    row.querySelector('.del-btn').onclick = () => openDeleteModal(d)
     return row
   }
 
@@ -1164,6 +1179,7 @@
     rows.innerHTML = ''
     const dirs = data.dirs.filter((d) => matchFilter(d.name))
     const files = sortFiles(data.files).filter((f) => matchFilter(f.name))
+    curDirs = dirs
     curFiles = files
     updateSelBar()
 
@@ -1496,18 +1512,21 @@
   }
 
   // ---------- 多选 + 批量操作 ----------
-  let selected = new Set() // 当前桶内已选文件的完整 key
+  let selected = new Set() // 当前桶内已选项的完整 key（文件夹以 / 结尾）
+  let curDirs = []         // 当前目录（筛选后）的子文件夹列表
   let curFiles = []        // 当前目录（筛选后）的文件列表
+
+  const curItems = () => [...curDirs, ...curFiles]
 
   function updateSelBar() {
     const bar = $('sel-bar')
     const n = selected.size
     bar.hidden = n === 0
     if (n > 0) $('sel-count').textContent = `已选 ${n} 项`
-    // 全选按钮：仅当目录里有文件时显示，文案随状态切换
+    // 全选按钮：仅当目录里有内容时显示，文案随状态切换
     const toggle = $('sel-all-toggle')
-    toggle.hidden = curFiles.length === 0
-    toggle.textContent = curFiles.length > 0 && curFiles.every((f) => selected.has(f.path))
+    toggle.hidden = curItems().length === 0
+    toggle.textContent = curItems().length > 0 && curItems().every((f) => selected.has(f.path))
       ? '取消全选'
       : '全选'
   }
@@ -1518,43 +1537,37 @@
   }
 
   $('sel-all-toggle').onclick = () => {
-    const all = curFiles.length > 0 && curFiles.every((f) => selected.has(f.path))
+    const items = curItems()
+    const all = items.length > 0 && items.every((f) => selected.has(f.path))
     if (all) {
-      curFiles.forEach((f) => selected.delete(f.path))
+      items.forEach((f) => selected.delete(f.path))
     } else {
-      curFiles.forEach((f) => selected.add(f.path))
+      items.forEach((f) => selected.add(f.path))
     }
-    // 同步复选框 UI
-    document.querySelectorAll('#rows .row.file').forEach((r) => {
-      const name = r.querySelector('.name').textContent
-      const f = curFiles.find((x) => x.name === name)
-      if (!f) return
-      const chk = r.querySelector('.chk')
-      chk.checked = selected.has(f.path)
-      r.classList.toggle('selected', chk.checked)
-    })
+    // 重渲染行，从 selected 恢复复选框状态
+    if (lastList) renderList(lastList)
     updateSelBar()
   }
 
   $('sel-cancel').onclick = () => {
     clearSelection()
-    document.querySelectorAll('#rows .row.file').forEach((r) => {
-      r.classList.remove('selected')
-      const chk = r.querySelector('.chk')
-      if (chk) chk.checked = false
-    })
+    if (lastList) renderList(lastList)
   }
 
   $('sel-del').onclick = () => {
-    const files = curFiles.filter((f) => selected.has(f.path))
-    if (!files.length) return
-    openDeleteModal(files)
+    const items = curItems().filter((f) => selected.has(f.path))
+    if (!items.length) return
+    openDeleteModal(items)
   }
 
   $('sel-move').onclick = () => {
-    const files = curFiles.filter((f) => selected.has(f.path))
-    if (!files.length) return
-    openMoveModal(files)
+    const items = curItems().filter((f) => selected.has(f.path))
+    if (!items.length) return
+    if (items.some((f) => f.path.endsWith('/'))) {
+      toast('文件夹不支持移动，请先取消勾选文件夹')
+      return
+    }
+    openMoveModal(items)
   }
 
   // ---------- 移动目标选择 ----------
@@ -1670,10 +1683,12 @@
     const arr = Array.isArray(files) ? files : [files]
     const bucket = currentBucket()
     pendingDelete = { bucket, keys: arr.map((f) => f.path), name: arr[0].name }
-    $('modal-desc').textContent =
+    const hasDir = arr.some((f) => f.path.endsWith('/'))
+    const head =
       arr.length === 1
         ? `${bucket} / ${arr[0].path}`
-        : `已选 ${arr.length} 个文件：${arr.slice(0, 3).map((f) => f.name).join('、')}${arr.length > 3 ? ' …' : ''}`
+        : `已选 ${arr.length} 项：${arr.slice(0, 3).map((f) => f.name).join('、')}${arr.length > 3 ? ' …' : ''}`
+    $('modal-desc').textContent = hasDir ? head + '（文件夹将递归删除其中所有文件，含子文件夹）' : head
     $('modal-input').value = ''
     $('modal-confirm').disabled = true
     $('modal-overlay').hidden = false
@@ -1699,24 +1714,45 @@
   $('modal-confirm').onclick = async () => {
     if (!pendingDelete) return
     const { bucket, keys, name } = pendingDelete
+    const dirKeys = keys.filter((k) => k.endsWith('/'))
+    const fileKeys = keys.filter((k) => !k.endsWith('/'))
     $('modal-confirm').disabled = true
     $('modal-confirm').textContent = '删除中…'
     try {
-      if (keys.length === 1) {
-        await api('/api/object?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(keys[0]), {
+      let total = 0
+      const errors = []
+      // 文件夹：走递归删除接口
+      if (dirKeys.length) {
+        const res = await api('/api/delete-tree', {
+          method: 'POST',
+          body: JSON.stringify({ bucket, prefixes: dirKeys }),
+        })
+        total += res.deleted || 0
+        if (res.errors) errors.push(...res.errors)
+      }
+      // 单个文件
+      if (fileKeys.length === 1) {
+        await api('/api/object?bucket=' + encodeURIComponent(bucket) + '&key=' + encodeURIComponent(fileKeys[0]), {
           method: 'DELETE',
         })
+        total += 1
+      } else if (fileKeys.length) {
+        // 多个文件：delete-batch 单次上限 500，分批调用
+        for (let i = 0; i < fileKeys.length; i += 500) {
+          const res = await api('/api/delete-batch', {
+            method: 'POST',
+            body: JSON.stringify({ bucket, keys: fileKeys.slice(i, i + 500) }),
+          })
+          total += res.deleted || 0
+          if (res.errors) errors.push(...res.errors)
+        }
+      }
+      if (errors.length) {
+        toast(`已删除 ${total} 个文件，${errors.length} 个失败：${errors[0].message || errors[0].reason || ''}`)
+      } else if (!dirKeys.length && fileKeys.length === 1) {
         toast('已删除：' + name)
       } else {
-        const res = await api('/api/delete-batch', {
-          method: 'POST',
-          body: JSON.stringify({ bucket, keys }),
-        })
-        if (res.failed && res.failed.length) {
-          toast(`已删除 ${res.deleted} 个，${res.failed.length} 个失败：${res.failed[0].message}`)
-        } else {
-          toast(`已删除 ${res.deleted} 个文件`)
-        }
+        toast(`已删除 ${total} 个文件`)
       }
       closeModal()
       clearSelection()

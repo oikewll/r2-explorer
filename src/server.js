@@ -244,6 +244,59 @@ app.post('/api/delete-batch', authGuard, async (c) => {
   return c.json({ ok: errors.length === 0, deleted: keys.length - errors.length, errors })
 })
 
+// 删除文件夹（按前缀递归列出所有对象并分批删除）
+app.post('/api/delete-tree', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const prefixes = (body.prefixes || []).filter(
+    (p) => typeof p === 'string' && p && p.endsWith('/')
+  )
+  if (!bucket || !prefixes.length) return c.json({ error: 'missing bucket/prefixes' }, 400)
+
+  let deleted = 0
+  const errors = []
+  for (const prefix of prefixes) {
+    let token
+    let list
+    do {
+      try {
+        list = await s3.send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix,
+            MaxKeys: 1000,
+            ContinuationToken: token,
+          })
+        )
+      } catch (e) {
+        errors.push({ prefix, message: 'ListObjects failed: ' + (e.message || e) })
+        break
+      }
+      const keys = (list.Contents || []).map((o) => o.Key).filter(Boolean)
+      // DeleteObjects 单次上限 1000，按 500 一批删
+      for (let i = 0; i < keys.length; i += 500) {
+        const batch = keys.slice(i, i + 500)
+        try {
+          const res = await s3.send(
+            new DeleteObjectsCommand({
+              Bucket: bucket,
+              Delete: { Objects: batch.map((k) => ({ Key: k })), Quiet: true },
+            })
+          )
+          const errs = res.Errors || []
+          deleted += batch.length - errs.length
+          errs.forEach((e) => errors.push({ key: e.Key, message: e.Message }))
+        } catch (e) {
+          errors.push({ prefix, message: 'DeleteObjects failed: ' + (e.message || e) })
+        }
+      }
+      token = list.IsTruncated ? list.NextContinuationToken : undefined
+    } while (token)
+  }
+  if (deleted > 0) statsCache.delete(bucket)
+  return c.json({ ok: errors.length === 0, deleted, errors })
+})
+
 // 移动 / 重命名（CopyObject + DeleteObject，单次最多 100 个）
 app.post('/api/move', authGuard, async (c) => {
   const body = await c.req.json().catch(() => ({}))
