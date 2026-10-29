@@ -1,6 +1,6 @@
 {
   "name": "r2-explorer",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Cloudflare R2 file explorer with simple auth",
   "type": "module",
   "main": "src/server.js",

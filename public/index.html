@@ -2133,10 +2133,7 @@
       btn.disabled = false
     }
   }
-  $('acc-form-cancel').onclick = () => {
-    editingAccId = null
-    resetAccForm()
-  }
+  $('acc-form-cancel').onclick = closeAccountsModal
   $('accounts-btn').onclick = openAccountsModal
   $('accounts-overlay').addEventListener('click', (e) => {
     if (e.target === $('accounts-overlay')) closeAccountsModal()
