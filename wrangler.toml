@@ -23,12 +23,10 @@ R2_CDN_MAP = '{"my-bucket":"https://cdn.example.com"}'
 # R2 密钥走 Worker secrets：R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
 # AUTH_PASSWORD 也是 secret
 
-# 多账号管理：绑定的账号存在 KV 里。创建并填入 id 后取消注释：
-#   wrangler kv namespace create ACCOUNTS_KV
-# 不配置时退化为 env 单账号模式（R2_ACCOUNT_ID + secrets），只是不能在界面里加账号
-# [[kv_namespaces]]
-# binding = "ACCOUNTS_KV"
-# id = "REPLACE_WITH_YOUR_KV_ID"
+# 多账号管理：绑定的账号存在这个 KV 里
+[[kv_namespaces]]
+binding = "ACCOUNTS_KV"
+id = "REDACTED_KV_NAMESPACE_ID"
 
 [observability]
 enabled = true
