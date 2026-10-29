@@ -1,6 +1,14 @@
 node_modules/
 .env
+.env.*
 .dev.vars
 .wrangler/
+data/
 *.log
 .DS_Store
+
+# 个人部署配置（真实域名 / KV id 等），不进仓库
+wrangler.prod.toml
+
+# 项目记忆
+.workbuddy/

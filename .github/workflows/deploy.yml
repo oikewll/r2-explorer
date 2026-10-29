@@ -25,12 +25,18 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: REDACTED_ACCOUNT_ID
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # 可选：用仓库变量 WRANGLER_CONFIG 指定自己的配置文件（如 wrangler.prod.toml），
+          # 其中可放真实的自定义域 / KV id 等个人配置；默认使用仓库内的 wrangler.toml
+          command: wrangler deploy ${WRANGLER_CONFIG:+-c $WRANGLER_CONFIG}
+        env:
+          WRANGLER_CONFIG: ${{ vars.WRANGLER_CONFIG }}
 
-      - name: Notify Telegram
+      - name: Notify
         if: always()
         env:
           TELEGRAM_WEBHOOK_URL: ${{ secrets.TELEGRAM_WEBHOOK_URL }}
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
           JOB_STATUS: ${{ job.status }}
           TAG: ${{ github.ref_name }}
           GITHUB_REPOSITORY: ${{ github.repository }}

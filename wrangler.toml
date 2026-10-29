@@ -7,7 +7,8 @@ rules = [
   { type = "Text", globs = ["**/*.html"] }
 ]
 
-# 自定义域（自动创建 DNS 记录 + 证书）
+# 自定义域（自动创建 DNS 记录 + 证书）。没有自定义域可整段删掉，
+# Workers 会自动分配 https://r2-explorer.<你的子域>.workers.dev
 routes = [
   { pattern = "r2.example.com", custom_domain = true }
 ]
@@ -16,17 +17,17 @@ routes = [
 workers_dev = true
 
 [vars]
-R2_ACCOUNT_ID = "REDACTED_ACCOUNT_ID"
+R2_ACCOUNT_ID = "your_cloudflare_account_id"
 # 桶名 -> CDN 自定义域；没配置的桶自动用 7 天预签名直链
 R2_CDN_MAP = '{"my-bucket":"https://cdn.example.com"}'
 
 # R2 密钥走 Worker secrets：R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
 # AUTH_PASSWORD 也是 secret
 
-# 多账号管理：绑定的账号存在这个 KV 里
+# 多账号管理：绑定的账号存在这个 KV 里（wrangler kv namespace create ACCOUNTS_KV）
 [[kv_namespaces]]
 binding = "ACCOUNTS_KV"
-id = "REDACTED_KV_NAMESPACE_ID"
+id = "your_kv_namespace_id"
 
 [observability]
 enabled = true

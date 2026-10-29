@@ -50,8 +50,16 @@ git tag v1.0.0 && git push origin v1.0.0
 
 | Secret | 说明 |
 | --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID（仪表盘右侧栏可查） |
 | `CLOUDFLARE_API_TOKEN` | API Token，用 Cloudflare 预设模板「编辑 Cloudflare Workers」，需包含 Workers Scripts:Edit、Workers Routes:Edit |
-| `TELEGRAM_WEBHOOK_URL` | `https://REDACTED_WEBHOOK_URL`（自建通知通道，见内部文档） |
+
+可选配置：
+
+| 变量 | 类型 | 说明 |
+| --- | --- | --- |
+| `TELEGRAM_WEBHOOK_URL` | secret | 部署成功/失败推送通知到自己的 webhook（请求体为 `{ fields: [{ label, value }] }` JSON） |
+| `WRANGLER_CONFIG` | variable | 指定自己的 wrangler 配置文件（如 `wrangler.prod.toml`，可放真实自定义域/KV id），默认用仓库内 `wrangler.toml` |
+| `DEPLOY_URL` | variable | 通知消息里展示的线上地址 |
 
 ## 本地开发
 

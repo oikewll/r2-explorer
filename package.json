@@ -2,6 +2,15 @@
   "name": "r2-explorer",
   "version": "1.8.2",
   "description": "Cloudflare R2 file explorer with simple auth",
+  "license": "MIT",
+  "author": "Hoanliu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oikewll/r2-explorer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oikewll/r2-explorer/issues"
+  },
   "type": "module",
   "main": "src/server.js",
   "scripts": {

@@ -1,20 +1,21 @@
-// Telegram 部署通知：成功/失败都推，推送失败不影响主流程
-// 用法参考 ~/projects/notify-integration.md
-const USER_AGENT = 'curl/8.7.1' // Worker 会拦脚本默认 UA，显式伪装
+// 部署通知（可选）：配置 secret TELEGRAM_WEBHOOK_URL 后，成功/失败都会推送，失败不影响主流程
+// 请求体格式兼容任意接受 { fields: [{ label, value }] } JSON 的 webhook
+const USER_AGENT = 'r2-explorer-ci'
 const TIMEOUT_MS = 10_000
 
 function buildFields({ status, tag }) {
   const ok = status === 'success'
-  return [
+  const fields = [
     { label: '事件', value: 'R2 Explorer 部署' },
     { label: '版本', value: tag && tag !== 'null' ? tag : 'manual' },
     { label: '状态', value: ok ? '✅ 成功' : '❌ 失败' },
-    { label: '线上', value: 'https://r2.example.com' },
-    {
-      label: 'Actions',
-      value: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
-    },
   ]
+  if (process.env.DEPLOY_URL) fields.push({ label: '线上', value: process.env.DEPLOY_URL })
+  fields.push({
+    label: 'Actions',
+    value: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+  })
+  return fields
 }
 
 async function sendWebhook(url, fields) {
