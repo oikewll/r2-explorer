@@ -88,7 +88,8 @@
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; cursor: pointer; }
   .brand:hover { background: var(--hover); }
   .header-right { display: flex; align-items: center; gap: 8px; }
-  #bucket-select {
+  #bucket-select,
+  #account-select {
     max-width: 180px;
     padding: 8px 30px 8px 12px;
     border: 1px solid var(--border);
@@ -106,7 +107,8 @@
     cursor: pointer;
     transition: border-color .15s, box-shadow .15s;
   }
-  #bucket-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  #account-select { max-width: 140px; }
+  #bucket-select:focus, #account-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .icon-btn {
     width: 36px; height: 36px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -311,6 +313,74 @@
   #modal-confirm { background: var(--danger); color: #fff; }
   #modal-confirm:hover { filter: brightness(1.08); }
   #modal-confirm:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ---------- 账号管理 ---------- */
+  #accounts-overlay {
+    position: fixed; inset: 0;
+    background: rgba(16, 24, 40, .45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    z-index: 230;
+  }
+  .accounts-modal {
+    width: 100%; max-width: 500px;
+    max-height: calc(100dvh - 60px);
+    overflow: auto;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, .2);
+  }
+  .accounts-modal h3 { font-size: 17px; margin-bottom: 14px; }
+  .acc-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    transition: border-color .15s, background .15s;
+  }
+  .acc-item.active { border-color: var(--accent); background: var(--accent-soft); }
+  .acc-item .a-info { flex: 1; min-width: 0; }
+  .acc-item .a-name {
+    font-weight: 600; font-size: 14px;
+    display: flex; align-items: center; gap: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .acc-item .a-meta {
+    font-size: 12px; color: var(--text-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    margin-top: 2px;
+  }
+  .acc-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+    background: var(--accent); color: #fff; flex: none;
+  }
+  .acc-badge.gray { background: var(--hover); color: var(--text-2); border: 1px solid var(--border); }
+  .acc-item .a-actions { display: flex; gap: 2px; flex: none; }
+  .acc-item .a-actions button {
+    padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--text-2);
+    transition: background .15s, color .15s;
+  }
+  .acc-item .a-actions button:hover { background: var(--accent-soft); color: var(--accent); }
+  .acc-item .a-actions button.danger:hover { background: var(--danger-soft); color: var(--danger); }
+  .acc-sep { height: 1px; background: var(--border); margin: 14px 0; }
+  .acc-form h4 { font-size: 14px; margin-bottom: 4px; }
+  .acc-form .form-note { font-size: 12px; color: var(--text-2); margin-bottom: 10px; line-height: 1.55; }
+  .acc-form input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    background: var(--bg);
+    transition: border-color .15s, box-shadow .15s;
+    margin-bottom: 8px;
+  }
+  .acc-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .acc-form input:disabled { opacity: .6; }
+  #acc-error { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 2px; }
 
   /* ---------- viewer（文件预览） ---------- */
   #viewer-overlay {
@@ -663,6 +733,7 @@
     .copy-btn, .del-btn, .rename-btn { width: 30px; height: 30px; }
     .brand { font-size: 15px; }
     #bucket-select { max-width: 130px; }
+    #account-select { max-width: 104px; }
   }
 </style>
 </head>
@@ -685,7 +756,11 @@
   <header>
     <a class="brand" href="#/" title="返回存储桶列表" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:inherit;border-radius:10px;padding:4px 8px;margin:-4px -8px;transition:background .15s"><span id="brand-logo" style="display:inline-flex"></span>R2 Explorer</a>
     <div class="header-right">
+      <select id="account-select" title="切换 R2 账号" hidden></select>
       <select id="bucket-select" title="选择存储桶" hidden></select>
+      <button class="icon-btn" id="accounts-btn" title="管理 R2 账号">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
       <button class="icon-btn" id="logout-btn" title="退出登录">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
@@ -785,6 +860,29 @@
     <div class="modal-actions">
       <button id="rename-cancel">取 消</button>
       <button class="btn-primary" id="rename-confirm" disabled style="padding:9px 18px">确 定</button>
+    </div>
+  </div>
+</div>
+
+<!-- R2 账号管理 -->
+<div id="accounts-overlay" hidden>
+  <div class="accounts-modal">
+    <h3>R2 账号管理</h3>
+    <div id="acc-list"></div>
+    <div class="acc-sep"></div>
+    <div class="acc-form">
+      <h4 id="acc-form-title">绑定新账号</h4>
+      <div class="form-note">保存前会用凭证真实调用 R2 API 验证。Access Key 在 Cloudflare 控制台「R2 → 管理 R2 API 令牌」创建；Account ID 在「R2 概览」右侧。CDN 映射可选：{"桶名":"https://域名"}，配置了映射的桶复制直链时用 CDN 域名。</div>
+      <input type="text" id="acc-name" placeholder="备注名称（如：主账号 / 图床）" autocomplete="off">
+      <input type="text" id="acc-id" placeholder="Account ID（32 位十六进制）" autocomplete="off" spellcheck="false">
+      <input type="text" id="acc-ak" placeholder="Access Key ID" autocomplete="off" spellcheck="false">
+      <input type="text" id="acc-sk" placeholder="Secret Access Key" autocomplete="off" spellcheck="false">
+      <input type="text" id="acc-cdn" placeholder='CDN 映射（可选）{"桶名":"https://域名"}' autocomplete="off" spellcheck="false">
+      <div id="acc-error"></div>
+      <div class="modal-actions">
+        <button id="acc-form-cancel">取 消</button>
+        <button class="btn-primary" id="acc-form-save" style="padding:9px 18px">保存并验证</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1305,6 +1403,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return
     if (!$v.overlay.hidden) closeViewer()
+    else if (!$('accounts-overlay').hidden) closeAccountsModal()
     else if (!$('move-overlay').hidden) closeMoveModal()
     else if (!$('rename-overlay').hidden) closeRenameModal()
   })
@@ -1862,6 +1961,187 @@
     }
   }
 
+  // ---------- R2 账号管理 ----------
+  let accountsData = { accounts: [], activeId: '', canManage: false }
+  let editingAccId = null
+
+  async function loadAccounts() {
+    accountsData = await api('/api/accounts')
+    renderAccountSelect()
+  }
+
+  function renderAccountSelect() {
+    const sel = $('account-select')
+    sel.innerHTML = ''
+    accountsData.accounts.forEach((a) => {
+      const opt = document.createElement('option')
+      opt.value = a.id
+      opt.textContent = a.name
+      sel.appendChild(opt)
+    })
+    sel.value = accountsData.activeId
+    sel.hidden = accountsData.accounts.length < 2 // 只有一个账号就不用切换
+  }
+
+  async function switchAccount(id) {
+    const acc = accountsData.accounts.find((x) => x.id === id)
+    try {
+      await api('/api/accounts/' + encodeURIComponent(id) + '/activate', { method: 'POST' })
+      accountsData.activeId = id
+      toast(`已切换到「${acc ? acc.name : id}」`)
+      renderAccountSelect()
+      // 不同账号的桶列表完全不同，回到总览重新加载
+      if (location.hash && location.hash !== '#/') location.hash = '#/'
+      else routeLoad()
+    } catch (e) {
+      if (e.message !== 'unauthorized') toast('切换失败：' + e.message)
+    }
+  }
+
+  $('account-select').addEventListener('change', (e) => switchAccount(e.target.value))
+
+  function openAccountsModal() {
+    editingAccId = null
+    resetAccForm()
+    renderAccList()
+    $('accounts-overlay').hidden = false
+  }
+
+  function closeAccountsModal() {
+    $('accounts-overlay').hidden = true
+    editingAccId = null
+  }
+
+  function resetAccForm() {
+    $('acc-form-title').textContent = '绑定新账号'
+    $('acc-name').value = ''
+    $('acc-id').value = ''
+    $('acc-id').disabled = false
+    $('acc-ak').value = ''
+    $('acc-ak').placeholder = 'Access Key ID'
+    $('acc-sk').value = ''
+    $('acc-sk').placeholder = 'Secret Access Key'
+    $('acc-cdn').value = ''
+    $('acc-error').textContent = ''
+  }
+
+  function renderAccList() {
+    const el = $('acc-list')
+    const { accounts, activeId, canManage } = accountsData
+    el.innerHTML = ''
+    if (!accounts.length) {
+      el.innerHTML = '<div class="mv-empty">还没有绑定账号，在下方填入凭证即可</div>'
+      return
+    }
+    accounts.forEach((a) => {
+      const row = document.createElement('div')
+      row.className = 'acc-item' + (a.id === activeId ? ' active' : '')
+      const cdnCount = Object.keys(a.cdnMap || {}).length
+      row.innerHTML = `
+        <span class="ficon" style="width:34px;height:34px;border-radius:10px;background:${ICON_COLORS.bucket}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${GLYPHS.bucket}</svg></span>
+        <div class="a-info">
+          <div class="a-name">${esc(a.name)}${a.id === activeId ? '<span class="acc-badge">使用中</span>' : ''}${a.builtin ? '<span class="acc-badge gray">内置</span>' : ''}</div>
+          <div class="a-meta" title="${esc(a.accountId)}">${esc(a.accountId)} · ${esc(a.keyMask)}${cdnCount ? ' · ' + cdnCount + ' 条 CDN 映射' : ''}</div>
+        </div>
+        <div class="a-actions"></div>`
+      const actions = row.querySelector('.a-actions')
+      if (a.id !== activeId) {
+        const useBtn = document.createElement('button')
+        useBtn.textContent = '使用'
+        useBtn.onclick = () => switchAccount(a.id)
+        actions.appendChild(useBtn)
+      }
+      if (canManage && !a.builtin) {
+        const editBtn = document.createElement('button')
+        editBtn.textContent = '编辑'
+        editBtn.onclick = () => startEditAccount(a)
+        actions.appendChild(editBtn)
+        const delBtn = document.createElement('button')
+        delBtn.textContent = '删除'
+        delBtn.className = 'danger'
+        delBtn.onclick = () => deleteAccount(a)
+        actions.appendChild(delBtn)
+      }
+      el.appendChild(row)
+    })
+    if (!canManage) {
+      const note = document.createElement('div')
+      note.className = 'form-note'
+      note.style.marginTop = '6px'
+      note.textContent = '当前为 Workers 部署且未绑定 KV 存储（ACCOUNTS_KV），只能使用 env 内置账号；按 README 配置 KV 后即可在此添加/编辑账号。'
+      el.appendChild(note)
+    }
+  }
+
+  function startEditAccount(a) {
+    editingAccId = a.id
+    $('acc-form-title').textContent = '编辑账号：' + a.name
+    $('acc-name').value = a.name
+    $('acc-id').value = a.accountId
+    $('acc-id').disabled = true // Account ID 不可改，换账号请解绑后重新绑定
+    $('acc-ak').value = ''
+    $('acc-ak').placeholder = 'Access Key ID（留空则不修改）'
+    $('acc-sk').value = ''
+    $('acc-sk').placeholder = 'Secret Access Key（留空则不修改）'
+    $('acc-cdn').value = a.cdnMap && Object.keys(a.cdnMap).length ? JSON.stringify(a.cdnMap) : ''
+    $('acc-error').textContent = ''
+  }
+
+  async function deleteAccount(a) {
+    if (!confirm(`确定解绑「${a.name}」（${a.accountId}）？\n存储桶和文件不会被删除，只是不再在此工具里显示。`)) return
+    try {
+      await api('/api/accounts/' + encodeURIComponent(a.id), { method: 'DELETE' })
+      toast('已解绑：' + a.name)
+      await loadAccounts()
+      renderAccList()
+      if (location.hash && location.hash !== '#/') location.hash = '#/'
+      else routeLoad()
+    } catch (e) {
+      if (e.message !== 'unauthorized') toast('删除失败：' + e.message)
+    }
+  }
+
+  $('acc-form-save').onclick = async () => {
+    const payload = {
+      name: $('acc-name').value,
+      accountId: $('acc-id').value,
+      accessKeyId: $('acc-ak').value,
+      secretAccessKey: $('acc-sk').value,
+      cdnMap: $('acc-cdn').value,
+    }
+    const btn = $('acc-form-save')
+    btn.disabled = true
+    $('acc-error').textContent = ''
+    try {
+      if (editingAccId) {
+        await api('/api/accounts/' + encodeURIComponent(editingAccId), {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        })
+        toast('已保存修改')
+      } else {
+        await api('/api/accounts', { method: 'POST', body: JSON.stringify(payload) })
+        toast('账号绑定成功')
+      }
+      editingAccId = null
+      resetAccForm()
+      await loadAccounts()
+      renderAccList()
+    } catch (e) {
+      if (e.message !== 'unauthorized') $('acc-error').textContent = e.message
+    } finally {
+      btn.disabled = false
+    }
+  }
+  $('acc-form-cancel').onclick = () => {
+    editingAccId = null
+    resetAccForm()
+  }
+  $('accounts-btn').onclick = openAccountsModal
+  $('accounts-overlay').addEventListener('click', (e) => {
+    if (e.target === $('accounts-overlay')) closeAccountsModal()
+  })
+
   // ---------- 上传 ----------
   let uploadQueue = [] // { file, name, key, itemEl, fillEl, pctEl, status }
 
@@ -2105,6 +2385,7 @@
     try {
       await api('/api/me')
       showMain()
+      await loadAccounts().catch(() => {}) // 账号加载失败不阻塞主流程
       await routeLoad()
     } catch {}
   }

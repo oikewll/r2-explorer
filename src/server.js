@@ -20,6 +20,8 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import crypto from 'node:crypto'
 import zlib from 'node:zlib'
+import fs from 'node:fs'
+import path from 'node:path'
 
 // ---------- env ----------
 const {
@@ -30,40 +32,123 @@ const {
   R2_CDN_MAP,
   AUTH_PASSWORD,
   AUTH_SECRET,
+  ACCOUNTS_FILE,
   PORT = 3000,
 } = process.env
 
-for (const [k, v] of Object.entries({
-  R2_ACCOUNT_ID,
-  R2_ACCESS_KEY_ID,
-  R2_SECRET_ACCESS_KEY,
-  AUTH_PASSWORD,
-})) {
-  if (!v) {
-    console.error(`[fatal] missing env: ${k}`)
-    process.exit(1)
-  }
+if (!AUTH_PASSWORD) {
+  console.error('[fatal] missing env: AUTH_PASSWORD')
+  process.exit(1)
+}
+// R2_* 凭证不再是启动必填：没配时仍可在界面里绑定账号（存 data/accounts.json）
+if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
+  console.warn('[warn] 未配置 R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY，请在网页「账号管理」里绑定 R2 账号')
 }
 
 const SECRET = AUTH_SECRET || crypto.createHash('sha256').update(`r2-explorer:${AUTH_PASSWORD}`).digest('hex')
-const S3_BASE = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
 
-let CDN_MAP = {}
-try {
-  CDN_MAP = R2_CDN_MAP ? JSON.parse(R2_CDN_MAP) : R2_PUBLIC_URL ? { '*': R2_PUBLIC_URL } : {}
-} catch {
-  CDN_MAP = {}
+// ---------- 多账号管理（Node 端存 data/accounts.json） ----------
+const ACCOUNTS_PATH = path.resolve(ACCOUNTS_FILE || './data/accounts.json')
+
+function loadStore() {
+  try {
+    const s = JSON.parse(fs.readFileSync(ACCOUNTS_PATH, 'utf8'))
+    if (s && Array.isArray(s.accounts)) return { accounts: s.accounts, activeId: s.activeId || '' }
+  } catch {}
+  return { accounts: [], activeId: '' }
 }
 
-// ---------- s3 client ----------
-const s3 = new S3Client({
-  region: 'auto',
-  endpoint: S3_BASE,
-  credentials: {
+const store = loadStore()
+
+function saveStore() {
+  fs.mkdirSync(path.dirname(ACCOUNTS_PATH), { recursive: true })
+  fs.writeFileSync(ACCOUNTS_PATH, JSON.stringify(store, null, 2))
+}
+
+function envAccount() {
+  if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) return null
+  let map = {}
+  try { map = R2_CDN_MAP ? JSON.parse(R2_CDN_MAP) : R2_PUBLIC_URL ? { '*': R2_PUBLIC_URL } : {} } catch {}
+  return {
+    id: 'env',
+    name: '默认账号',
+    accountId: R2_ACCOUNT_ID,
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
-  },
-})
+    cdnMap: map,
+    builtin: true,
+  }
+}
+
+// 生效账号 = 用户绑定的账号 + env 内置账号（同 accountId 自动去重，隐藏内置）
+function effectiveAccounts() {
+  const list = [...store.accounts]
+  const envAcc = envAccount()
+  if (envAcc && !list.some((a) => a.accountId === envAcc.accountId)) list.push(envAcc)
+  return list
+}
+
+function sanitizeAccount(a) {
+  const key = a.accessKeyId || ''
+  return {
+    id: a.id,
+    name: a.name,
+    accountId: a.accountId,
+    keyMask: key ? key.slice(0, 4) + '****' + key.slice(-2) : '',
+    cdnMap: a.cdnMap || {},
+    builtin: !!a.builtin,
+    createdAt: a.createdAt,
+  }
+}
+
+// S3Client 按账号缓存复用
+const s3Clients = new Map()
+function getClient(acc) {
+  let client = s3Clients.get(acc.id)
+  if (!client) {
+    client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${acc.accountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: acc.accessKeyId,
+        secretAccessKey: acc.secretAccessKey,
+      },
+    })
+    s3Clients.set(acc.id, client)
+  }
+  return client
+}
+
+// 绑定/改密钥前先真实调一次 ListBuckets 验证凭证
+async function validateCreds(accountId, accessKeyId, secretAccessKey) {
+  const probe = new S3Client({
+    region: 'auto',
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: { accessKeyId, secretAccessKey },
+  })
+  try {
+    await probe.send(new ListBucketsCommand({}))
+    return null
+  } catch (e) {
+    const code = e?.$metadata?.httpStatusCode
+    if (code === 401 || code === 403 || e.name === 'InvalidAccessKeyId' || e.name === 'SignatureDoesNotMatch') {
+      return '凭证验证失败：请检查 Access Key ID / Secret Access Key（需 R2 权限的 API Token）'
+    }
+    return `凭证验证失败（HTTP ${code || '未知'}）：${e.message || e}`
+  }
+}
+
+// 解析 CDN 映射字段：接受对象或 JSON 字符串，缺省/空视为 {}，非法返回 { error }
+function parseCdnMap(input) {
+  let m = input
+  if (m === undefined || m === null) return { value: {} }
+  if (typeof m === 'string') {
+    if (!m.trim()) return { value: {} }
+    try { m = JSON.parse(m) } catch { return { error: 'CDN 映射不是合法 JSON' } }
+  }
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return { error: 'CDN 映射格式不正确（应为 { "桶名": "https://域名" }）' }
+  return { value: m }
+}
 
 // ---------- auth helpers ----------
 const TOKEN_NAME = 'r2x_token'
@@ -108,13 +193,13 @@ function encodedKey(key) {
 }
 
 // 有 CDN 自定义域就用它，否则给 7 天预签名直链
-async function fileUrl(bucket, key) {
-  const mapped = CDN_MAP[bucket] || CDN_MAP['*']
+async function fileUrl(c, bucket, key) {
+  const mapped = c._cdnMap[bucket] || c._cdnMap['*']
   if (mapped) {
     return { url: `${mapped.replace(/\/+$/, '')}/${encodedKey(key)}`, presigned: false }
   }
   const url = await getSignedUrl(
-    s3,
+    c._s3,
     new GetObjectCommand({ Bucket: bucket, Key: key }),
     { expiresIn: 7 * 24 * 3600 }
   )
@@ -123,6 +208,23 @@ async function fileUrl(bucket, key) {
 
 // ---------- app ----------
 const app = new Hono()
+
+// 每个请求按「当前激活账号」绑定 S3 客户端与 CDN 映射
+app.use('*', async (c, next) => {
+  const list = effectiveAccounts()
+  const acc = list.find((a) => a.id === store.activeId) || list[0] || null
+  c._account = acc
+  // 登录/账号管理接口要能在「一个账号都没有」时工作，其余 /api 接口必须有可用凭证
+  const isNonR2Api = /^\/api\/(login|logout|me|accounts)/.test(c.req.path)
+  if (!acc && !isNonR2Api && c.req.path.startsWith('/api/')) {
+    return c.json({ error: '未配置 R2 凭证（请在账号管理里绑定，或设置 R2_* 环境变量）' }, 500)
+  }
+  if (acc) {
+    c._s3 = getClient(acc)
+    c._cdnMap = acc.cdnMap || {}
+  }
+  await next()
+})
 
 const authGuard = async (c, next) => {
   if (verifyToken(getCookie(c, TOKEN_NAME))) return next()
@@ -153,20 +255,117 @@ app.post('/api/logout', (c) => {
 
 app.get('/api/me', authGuard, (c) => c.json({ ok: true }))
 
-// ---------- 桶统计（内存缓存 1 小时） ----------
-const STATS_TTL_MS = 3600 * 1000
-const statsCache = new Map() // bucket -> { stats, expires }
+// ---------- R2 账号管理 ----------
+// 列出账号（密钥只返回掩码）
+app.get('/api/accounts', authGuard, (c) => {
+  return c.json({
+    accounts: effectiveAccounts().map(sanitizeAccount),
+    activeId: c._account?.id || '',
+    canManage: true,
+  })
+})
 
-function getCachedStats(bucket) {
-  const hit = statsCache.get(bucket)
+// 绑定新账号（保存前先验证凭证）
+app.post('/api/accounts', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const name = String(body.name || '').trim()
+  const accountId = String(body.accountId || '').trim()
+  const accessKeyId = String(body.accessKeyId || '').trim()
+  const secretAccessKey = String(body.secretAccessKey || '').trim()
+  if (!name || !accountId || !accessKeyId || !secretAccessKey) return c.json({ error: '请填写完整的名称、Account ID、Access Key ID 和 Secret Access Key' }, 400)
+  if (!/^[a-f0-9]{32}$/i.test(accountId)) return c.json({ error: 'Account ID 格式不正确（应为 32 位十六进制）' }, 400)
+  const map = parseCdnMap(body.cdnMap)
+  if (map.error) return c.json({ error: map.error }, 400)
+
+  const err = await validateCreds(accountId, accessKeyId, secretAccessKey)
+  if (err) return c.json({ error: err }, 400)
+
+  if (store.accounts.some((a) => a.accountId === accountId)) return c.json({ error: '该 Cloudflare 账号已绑定' }, 400)
+  const acc = {
+    id: crypto.randomUUID().slice(0, 8),
+    name,
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    cdnMap: map.value,
+    createdAt: new Date().toISOString(),
+  }
+  store.accounts.push(acc)
+  saveStore()
+  return c.json({ ok: true, id: acc.id })
+})
+
+// 编辑账号（名称 / CDN 映射 / 密钥；密钥留空表示不修改）
+app.put('/api/accounts/:id', authGuard, async (c) => {
+  const acc = store.accounts.find((a) => a.id === c.req.param('id'))
+  if (!acc) return c.json({ error: '账号不存在' }, 404)
+  const body = await c.req.json().catch(() => ({}))
+
+  if (body.name !== undefined) {
+    const n = String(body.name).trim()
+    if (!n) return c.json({ error: '名称不能为空' }, 400)
+    acc.name = n
+  }
+  if (body.cdnMap !== undefined) {
+    const map = parseCdnMap(body.cdnMap)
+    if (map.error) return c.json({ error: map.error }, 400)
+    acc.cdnMap = map.value
+  }
+  const ak = String(body.accessKeyId || '').trim()
+  const sk = String(body.secretAccessKey || '').trim()
+  if (ak || sk) {
+    const nAk = ak || acc.accessKeyId
+    const nSk = sk || acc.secretAccessKey
+    const err = await validateCreds(acc.accountId, nAk, nSk)
+    if (err) return c.json({ error: err }, 400)
+    if (ak) acc.accessKeyId = ak
+    if (sk) acc.secretAccessKey = sk
+    s3Clients.delete(acc.id) // 旧客户端作废
+  }
+  saveStore()
+  return c.json({ ok: true })
+})
+
+// 解绑账号（删的是当前账号则自动切回第一个）
+app.delete('/api/accounts/:id', authGuard, async (c) => {
+  const id = c.req.param('id')
+  const idx = store.accounts.findIndex((a) => a.id === id)
+  if (idx < 0) return c.json({ error: '账号不存在' }, 404)
+  store.accounts.splice(idx, 1)
+  if (store.activeId === id) store.activeId = ''
+  s3Clients.delete(id)
+  saveStore()
+  return c.json({ ok: true })
+})
+
+// 切换当前使用的账号
+app.post('/api/accounts/:id/activate', authGuard, async (c) => {
+  const id = c.req.param('id')
+  if (!effectiveAccounts().some((a) => a.id === id)) return c.json({ error: '账号不存在' }, 404)
+  store.activeId = id
+  saveStore()
+  return c.json({ ok: true })
+})
+
+// ---------- 桶统计（内存缓存 1 小时，按账号隔离） ----------
+const STATS_TTL_MS = 3600 * 1000
+const statsCache = new Map() // `${accountId}:${bucket}` -> { stats, expires }
+
+function getCachedStats(c, bucket) {
+  const key = `${c._account?.id || 'env'}:${bucket}`
+  const hit = statsCache.get(key)
   if (hit && hit.expires > Date.now()) return hit.stats
-  if (hit) statsCache.delete(bucket)
+  if (hit) statsCache.delete(key)
   return null
+}
+
+function invalidateStats(c, bucket) {
+  statsCache.delete(`${c._account?.id || 'env'}:${bucket}`)
 }
 
 // 列出账号下所有 R2 桶（附带缓存的统计信息）
 app.get('/api/buckets', authGuard, async (c) => {
-  const res = await s3.send(new ListBucketsCommand({}))
+  const res = await c._s3.send(new ListBucketsCommand({}))
   const names = (res.Buckets || []).map((b) => b.Name).filter(Boolean).sort()
   const buckets = names.map((name) => ({ name, stats: getCachedStats(name) }))
   return c.json({ buckets })
@@ -177,7 +376,7 @@ app.get('/api/stats', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
   if (!bucket) return c.json({ error: 'missing bucket' }, 400)
 
-  const cached = getCachedStats(bucket)
+  const cached = getCachedStats(c, bucket)
   if (cached) return c.json({ bucket, stats: cached, cached: true })
 
   let objects = 0
@@ -185,7 +384,7 @@ app.get('/api/stats', authGuard, async (c) => {
   let lastModified = null
   let token
   do {
-    const res = await s3.send(
+    const res = await c._s3.send(
       new ListObjectsV2Command({
         Bucket: bucket,
         MaxKeys: 1000,
@@ -209,7 +408,7 @@ app.get('/api/stats', authGuard, async (c) => {
     modifiedText: lastModified ? formatTime(lastModified) : null,
     computedAt: new Date().toISOString(),
   }
-  statsCache.set(bucket, { stats, expires: Date.now() + STATS_TTL_MS })
+  statsCache.set(`${c._account?.id || 'env'}:${bucket}`, { stats, expires: Date.now() + STATS_TTL_MS })
   return c.json({ bucket, stats, cached: false })
 })
 
@@ -220,8 +419,8 @@ app.delete('/api/object', authGuard, async (c) => {
   if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
   if (key.endsWith('/')) return c.json({ error: '不支持删除文件夹' }, 400)
 
-  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
-  statsCache.delete(bucket)
+  await c._s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+  invalidateStats(c, bucket)
   return c.json({ ok: true })
 })
 
@@ -233,14 +432,14 @@ app.post('/api/delete-batch', authGuard, async (c) => {
   if (!bucket || !keys.length) return c.json({ error: 'missing bucket/keys' }, 400)
   if (keys.length > 500) return c.json({ error: '单次最多删除 500 个文件' }, 400)
 
-  const res = await s3.send(
+  const res = await c._s3.send(
     new DeleteObjectsCommand({
       Bucket: bucket,
       Delete: { Objects: keys.map((k) => ({ Key: k })), Quiet: true },
     })
   )
   const errors = (res.Errors || []).map((e) => ({ key: e.Key, message: e.Message }))
-  statsCache.delete(bucket)
+  invalidateStats(c, bucket)
   return c.json({ ok: errors.length === 0, deleted: keys.length - errors.length, errors })
 })
 
@@ -260,7 +459,7 @@ app.post('/api/delete-tree', authGuard, async (c) => {
     let list
     do {
       try {
-        list = await s3.send(
+        list = await c._s3.send(
           new ListObjectsV2Command({
             Bucket: bucket,
             Prefix: prefix,
@@ -277,7 +476,7 @@ app.post('/api/delete-tree', authGuard, async (c) => {
       for (let i = 0; i < keys.length; i += 500) {
         const batch = keys.slice(i, i + 500)
         try {
-          const res = await s3.send(
+          const res = await c._s3.send(
             new DeleteObjectsCommand({
               Bucket: bucket,
               Delete: { Objects: batch.map((k) => ({ Key: k })), Quiet: true },
@@ -293,7 +492,7 @@ app.post('/api/delete-tree', authGuard, async (c) => {
       token = list.IsTruncated ? list.NextContinuationToken : undefined
     } while (token)
   }
-  if (deleted > 0) statsCache.delete(bucket)
+  if (deleted > 0) invalidateStats(c, bucket)
   return c.json({ ok: errors.length === 0, deleted, errors })
 })
 
@@ -315,20 +514,20 @@ app.post('/api/move', authGuard, async (c) => {
       continue
     }
     try {
-      await s3.send(
+      await c._s3.send(
         new CopyObjectCommand({
           Bucket: bucket,
           CopySource: `/${bucket}/${from.split('/').map(encodeURIComponent).join('/')}`,
           Key: to,
         })
       )
-      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: from }))
+      await c._s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: from }))
       moved++
     } catch (e) {
       failed.push({ from, to, reason: e.message || 'unknown error' })
     }
   }
-  statsCache.delete(bucket)
+  invalidateStats(c, bucket)
   return c.json({ ok: failed.length === 0, moved, failed })
 })
 
@@ -360,7 +559,7 @@ app.post('/api/move-tree', authGuard, async (c) => {
     let list
     do {
       try {
-        list = await s3.send(
+        list = await c._s3.send(
           new ListObjectsV2Command({
             Bucket: bucket,
             Prefix: it.from,
@@ -377,7 +576,7 @@ app.post('/api/move-tree', authGuard, async (c) => {
       for (const key of keys) {
         const nk = it.to + key.slice(it.from.length)
         try {
-          await s3.send(
+          await c._s3.send(
             new CopyObjectCommand({
               Bucket: bucket,
               CopySource: `/${bucket}/${encodedKey(key)}`,
@@ -394,7 +593,7 @@ app.post('/api/move-tree', authGuard, async (c) => {
       for (let i = 0; i < copied.length; i += 500) {
         const batch = copied.slice(i, i + 500)
         try {
-          await s3.send(
+          await c._s3.send(
             new DeleteObjectsCommand({
               Bucket: bucket,
               Delete: { Objects: batch.map((k) => ({ Key: k })), Quiet: true },
@@ -409,7 +608,7 @@ app.post('/api/move-tree', authGuard, async (c) => {
     moved += count
     folders.push({ from: it.from, to: it.to, count })
   }
-  statsCache.delete(bucket)
+  invalidateStats(c, bucket)
   return c.json({ ok: failed.length === 0, moved, folders, failed })
 })
 
@@ -423,7 +622,7 @@ app.post('/api/upload', authGuard, async (c) => {
   if (len > 100 * 1024 * 1024) return c.json({ error: '单文件最大 100MB' }, 413)
 
   const body = await c.req.arrayBuffer()
-  await s3.send(
+  await c._s3.send(
     new PutObjectCommand({
       Bucket: bucket,
       Key: key,
@@ -431,7 +630,7 @@ app.post('/api/upload', authGuard, async (c) => {
       ContentType: c.req.header('content-type') || 'application/octet-stream',
     })
   )
-  statsCache.delete(bucket)
+  invalidateStats(c, bucket)
   return c.json({ ok: true, key })
 })
 
@@ -443,7 +642,7 @@ app.post('/api/multipart/init', authGuard, async (c) => {
   if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
   if (key.endsWith('/')) return c.json({ error: 'bad key' }, 400)
   try {
-    const res = await s3.send(
+    const res = await c._s3.send(
       new CreateMultipartUploadCommand({ Bucket: bucket, Key: key, ContentType: mimeFor(key) })
     )
     return c.json({ ok: true, uploadId: res.UploadId })
@@ -467,7 +666,7 @@ app.put('/api/multipart/part', authGuard, async (c) => {
 
   const body = Buffer.from(await c.req.arrayBuffer())
   try {
-    const res = await s3.send(
+    const res = await c._s3.send(
       new UploadPartCommand({ Bucket: bucket, Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body })
     )
     return c.json({ ok: true, partNumber, etag: (res.ETag || '').replace(/"/g, '') })
@@ -486,7 +685,7 @@ app.post('/api/multipart/complete', authGuard, async (c) => {
   const parts = Array.isArray(body.parts) ? body.parts : []
   if (!parts.length) return c.json({ error: 'missing parts' }, 400)
   try {
-    await s3.send(
+    await c._s3.send(
       new CompleteMultipartUploadCommand({
         Bucket: bucket,
         Key: key,
@@ -496,7 +695,7 @@ app.post('/api/multipart/complete', authGuard, async (c) => {
         },
       })
     )
-    statsCache.delete(bucket)
+    invalidateStats(c, bucket)
     return c.json({ ok: true, key })
   } catch (e) {
     return c.json({ error: 'CompleteMultipartUpload failed: ' + (e.message || e) }, 500)
@@ -510,7 +709,7 @@ app.post('/api/multipart/abort', authGuard, async (c) => {
   const uploadId = c.req.query('uploadId')
   if (!bucket || !key || !uploadId) return c.json({ error: 'missing params' }, 400)
   try {
-    await s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: key, UploadId: uploadId }))
+    await c._s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: key, UploadId: uploadId }))
   } catch {}
   return c.json({ ok: true })
 })
@@ -522,7 +721,7 @@ app.get('/api/list', authGuard, async (c) => {
   if (!bucket) return c.json({ error: 'missing bucket' }, 400)
   if (prefix && !prefix.endsWith('/')) return c.json({ error: 'bad prefix' }, 400)
 
-  const res = await s3.send(
+  const res = await c._s3.send(
     new ListObjectsV2Command({
       Bucket: bucket,
       Prefix: prefix || undefined,
@@ -555,7 +754,7 @@ app.get('/api/list', authGuard, async (c) => {
 
   await Promise.all(
     files.map(async (f) => {
-      const { url, presigned } = await fileUrl(bucket, f.path)
+      const { url, presigned } = await fileUrl(c, bucket, f.path)
       f.url = url
       f.presigned = presigned
     })
@@ -581,13 +780,13 @@ app.get('/api/info', authGuard, async (c) => {
   if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
   let res
   try {
-    res = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+    res = await c._s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
   } catch (e) {
     const code = e?.$metadata?.httpStatusCode
     if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
     return c.json({ error: `HeadObject failed: ${code || e.message}` }, 500)
   }
-  const { url, presigned } = await fileUrl(bucket, key)
+  const { url, presigned } = await fileUrl(c, bucket, key)
   return c.json({
     bucket,
     key,
@@ -629,8 +828,8 @@ function u32(buf, off) {
   return (buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16) | (buf[off + 3] << 24)) >>> 0
 }
 
-async function s3GetRange(bucket, key, start, end) {
-  const obj = await s3.send(
+async function s3GetRange(c, bucket, key, start, end) {
+  const obj = await c._s3.send(
     new GetObjectCommand({ Bucket: bucket, Key: key, Range: `bytes=${start}-${end}` })
   )
   return Buffer.from(await obj.Body.transformToByteArray())
@@ -648,14 +847,14 @@ app.get('/api/text', authGuard, async (c) => {
   if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
   let res
   try {
-    res = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+    res = await c._s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
   } catch (e) {
     const code = e?.$metadata?.httpStatusCode
     if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
     return c.json({ error: `HEAD failed: ${code || e.message}` }, 500)
   }
   if ((res.ContentLength || 0) > TEXT_CAP) return c.json({ error: '文件过大，请下载后查看' }, 413)
-  const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+  const obj = await c._s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
   const text = await obj.Body.transformToString('utf-8')
   return c.body(text, 200, {
     'Content-Type': 'text/plain; charset=utf-8',
@@ -670,7 +869,7 @@ app.get('/api/zip', authGuard, async (c) => {
   if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
   let size
   try {
-    const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+    const head = await c._s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
     size = head.ContentLength
   } catch (e) {
     const code = e?.$metadata?.httpStatusCode
@@ -679,7 +878,7 @@ app.get('/api/zip', authGuard, async (c) => {
   }
 
   const tailLen = Math.min(size, 65536 + 65535)
-  const buf = await s3GetRange(bucket, key, size - tailLen, size - 1)
+  const buf = await s3GetRange(c, bucket, key, size - tailLen, size - 1)
   let eocd = -1
   for (let i = buf.length - 22; i >= 0; i--) {
     if (u32(buf, i) === 0x06054b50) { eocd = i; break }
@@ -690,7 +889,7 @@ app.get('/api/zip', authGuard, async (c) => {
   const cdOffset = u32(buf, eocd + 16)
   if (count === 0xffff || cdOffset === 0xffffffff) return c.json({ error: '暂不支持 ZIP64 格式' }, 400)
 
-  const cbuf = await s3GetRange(bucket, key, cdOffset, cdOffset + cdSize - 1)
+  const cbuf = await s3GetRange(c, bucket, key, cdOffset, cdOffset + cdSize - 1)
   const entries = []
   let dirCount = 0
   let p = 0
@@ -727,11 +926,11 @@ app.get('/api/zip-entry', authGuard, async (c) => {
   }
   if (usize > ENTRY_CAP) return c.json({ error: '文件过大，请下载整个压缩包查看' }, 413)
 
-  const lbuf = await s3GetRange(bucket, key, off, off + 29)
+  const lbuf = await s3GetRange(c, bucket, key, off, off + 29)
   if (u32(lbuf, 0) !== 0x04034b50) return c.json({ error: 'ZIP 结构异常' }, 400)
   const dataStart = off + 30 + u16(lbuf, 26) + u16(lbuf, 28)
 
-  let data = await s3GetRange(bucket, key, dataStart, dataStart + csize - 1)
+  let data = await s3GetRange(c, bucket, key, dataStart, dataStart + csize - 1)
   if (method === 8) {
     data = zlib.inflateRawSync(data)
   } else if (method !== 0) {

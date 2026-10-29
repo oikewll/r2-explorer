@@ -77,23 +77,115 @@ const TOKEN_NAME = 'r2x_token'
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000
 const PRESIGN_EXPIRES = 7 * 24 * 3600 // R2 SigV4 预签名最长 7 天
 
+// ---------- 多账号管理（Workers 端存 KV：binding ACCOUNTS_KV） ----------
+// 未绑定 KV 时自动回退为 env 单账号（内置，不可增删）
+const STORE_KEY = 'r2x_accounts_v1'
+
+function envAccount(env) {
+  if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) return null
+  let map = {}
+  try { map = JSON.parse(env.R2_CDN_MAP || '{}') } catch {}
+  return {
+    id: 'env',
+    name: '默认账号',
+    accountId: env.R2_ACCOUNT_ID,
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    cdnMap: map,
+    builtin: true,
+  }
+}
+
+async function readStore(env) {
+  if (!env.ACCOUNTS_KV) return { accounts: [], activeId: '' }
+  try {
+    const raw = await env.ACCOUNTS_KV.get(STORE_KEY)
+    const s = raw ? JSON.parse(raw) : null
+    if (s && Array.isArray(s.accounts)) return { accounts: s.accounts, activeId: s.activeId || '' }
+  } catch {}
+  return { accounts: [], activeId: '' }
+}
+
+async function writeStore(env, store) {
+  await env.ACCOUNTS_KV.put(STORE_KEY, JSON.stringify(store))
+}
+
+// 生效账号 = 用户绑定的账号 + env 内置账号（同 accountId 自动去重，隐藏内置）
+function effectiveAccounts(store, env) {
+  const list = [...store.accounts]
+  const envAcc = envAccount(env)
+  if (envAcc && !list.some((a) => a.accountId === envAcc.accountId)) list.push(envAcc)
+  return list
+}
+
+// API 输出用：剥掉密钥，只留掩码
+function sanitizeAccount(a) {
+  const key = a.accessKeyId || ''
+  return {
+    id: a.id,
+    name: a.name,
+    accountId: a.accountId,
+    keyMask: key ? key.slice(0, 4) + '****' + key.slice(-2) : '',
+    cdnMap: a.cdnMap || {},
+    builtin: !!a.builtin,
+    createdAt: a.createdAt,
+  }
+}
+
+function pickActive(store, env) {
+  const list = effectiveAccounts(store, env)
+  return list.find((a) => a.id === store.activeId) || list[0] || null
+}
+
+// 绑定/改密钥前先真实调一次 ListBuckets 验证凭证
+async function validateCreds(accountId, accessKeyId, secretAccessKey) {
+  const client = new AwsClient({ accessKeyId, secretAccessKey, service: 's3', region: 'auto' })
+  let res
+  try {
+    res = await client.fetch(`https://${accountId}.r2.cloudflarestorage.com/`)
+  } catch {
+    return '无法连接 R2 S3 API，请检查 Account ID'
+  }
+  if (res.ok) return null
+  if (res.status === 401 || res.status === 403) return '凭证验证失败：请检查 Access Key ID / Secret Access Key（需 R2 权限的 API Token）'
+  return `凭证验证失败（HTTP ${res.status}）：请检查 Account ID 与凭证`
+}
+
+// 解析 CDN 映射字段：接受对象或 JSON 字符串，缺省/空视为 {}，非法返回 { error }
+function parseCdnMap(input) {
+  let m = input
+  if (m === undefined || m === null) return { value: {} }
+  if (typeof m === 'string') {
+    if (!m.trim()) return { value: {} }
+    try { m = JSON.parse(m) } catch { return { error: 'CDN 映射不是合法 JSON' } }
+  }
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return { error: 'CDN 映射格式不正确（应为 { "桶名": "https://域名" }）' }
+  return { value: m }
+}
+
 // ---------- app ----------
 const app = new Hono()
 
 app.use('*', async (c, next) => {
   c._secret = c.env.AUTH_SECRET || (await deriveSecret(c.env.AUTH_PASSWORD || ''))
-  c._r2 = new AwsClient({
-    accessKeyId: c.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: c.env.R2_SECRET_ACCESS_KEY,
-    service: 's3',
-    region: 'auto',
-  })
-  c._s3Base = `https://${c.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
-  let map = {}
-  try {
-    map = JSON.parse(c.env.R2_CDN_MAP || '{}')
-  } catch {}
-  c._cdnMap = map
+  c._store = await readStore(c.env)
+  const acc = pickActive(c._store, c.env)
+  c._account = acc
+  // 登录/账号管理接口要能在「一个账号都没有」时工作，其余 /api 接口必须有可用凭证
+  const isNonR2Api = /^\/api\/(login|logout|me|accounts)/.test(c.req.path)
+  if (!acc && !isNonR2Api && c.req.path.startsWith('/api/')) {
+    return c.json({ error: '未配置 R2 凭证（请在账号管理里绑定，或设置 R2_* 环境变量）' }, 500)
+  }
+  if (acc) {
+    c._r2 = new AwsClient({
+      accessKeyId: acc.accessKeyId,
+      secretAccessKey: acc.secretAccessKey,
+      service: 's3',
+      region: 'auto',
+    })
+    c._s3Base = `https://${acc.accountId}.r2.cloudflarestorage.com`
+    c._cdnMap = acc.cdnMap || {}
+  }
   await next()
 })
 
@@ -133,19 +225,123 @@ const authGuard = async (c, next) => {
 
 app.get('/api/me', authGuard, (c) => c.json({ ok: true }))
 
+// ---------- R2 账号管理 ----------
+// 列出账号（密钥只返回掩码）
+app.get('/api/accounts', authGuard, (c) => {
+  const list = effectiveAccounts(c._store, c.env)
+  return c.json({
+    accounts: list.map(sanitizeAccount),
+    activeId: c._account?.id || '',
+    canManage: !!c.env.ACCOUNTS_KV,
+  })
+})
+
+// 绑定新账号（保存前先验证凭证）
+app.post('/api/accounts', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储（ACCOUNTS_KV），无法保存账号；请参考 README 配置' }, 400)
+  const body = await c.req.json().catch(() => ({}))
+  const name = String(body.name || '').trim()
+  const accountId = String(body.accountId || '').trim()
+  const accessKeyId = String(body.accessKeyId || '').trim()
+  const secretAccessKey = String(body.secretAccessKey || '').trim()
+  if (!name || !accountId || !accessKeyId || !secretAccessKey) return c.json({ error: '请填写完整的名称、Account ID、Access Key ID 和 Secret Access Key' }, 400)
+  if (!/^[a-f0-9]{32}$/i.test(accountId)) return c.json({ error: 'Account ID 格式不正确（应为 32 位十六进制）' }, 400)
+  const map = parseCdnMap(body.cdnMap)
+  if (map.error) return c.json({ error: map.error }, 400)
+
+  const err = await validateCreds(accountId, accessKeyId, secretAccessKey)
+  if (err) return c.json({ error: err }, 400)
+
+  const store = c._store
+  if (store.accounts.some((a) => a.accountId === accountId)) return c.json({ error: '该 Cloudflare 账号已绑定' }, 400)
+  const acc = {
+    id: crypto.randomUUID().slice(0, 8),
+    name,
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    cdnMap: map.value,
+    createdAt: new Date().toISOString(),
+  }
+  store.accounts.push(acc)
+  await writeStore(c.env, store)
+  c._store = store
+  return c.json({ ok: true, id: acc.id })
+})
+
+// 编辑账号（名称 / CDN 映射 / 密钥；密钥留空表示不修改）
+app.put('/api/accounts/:id', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储（ACCOUNTS_KV），无法修改账号' }, 400)
+  const acc = c._store.accounts.find((a) => a.id === c.req.param('id'))
+  if (!acc) return c.json({ error: '账号不存在' }, 404)
+  const body = await c.req.json().catch(() => ({}))
+
+  if (body.name !== undefined) {
+    const n = String(body.name).trim()
+    if (!n) return c.json({ error: '名称不能为空' }, 400)
+    acc.name = n
+  }
+  if (body.cdnMap !== undefined) {
+    const map = parseCdnMap(body.cdnMap)
+    if (map.error) return c.json({ error: map.error }, 400)
+    acc.cdnMap = map.value
+  }
+  const ak = String(body.accessKeyId || '').trim()
+  const sk = String(body.secretAccessKey || '').trim()
+  if (ak || sk) {
+    const nAk = ak || acc.accessKeyId
+    const nSk = sk || acc.secretAccessKey
+    const err = await validateCreds(acc.accountId, nAk, nSk)
+    if (err) return c.json({ error: err }, 400)
+    if (ak) acc.accessKeyId = ak
+    if (sk) acc.secretAccessKey = sk
+  }
+  await writeStore(c.env, c._store)
+  return c.json({ ok: true })
+})
+
+// 解绑账号（内置 env 账号不可删；删的是当前账号则自动切回第一个）
+app.delete('/api/accounts/:id', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储（ACCOUNTS_KV），无法删除账号' }, 400)
+  const id = c.req.param('id')
+  const store = c._store
+  const idx = store.accounts.findIndex((a) => a.id === id)
+  if (idx < 0) return c.json({ error: '账号不存在' }, 404)
+  store.accounts.splice(idx, 1)
+  if (store.activeId === id) store.activeId = ''
+  await writeStore(c.env, store)
+  c._store = store
+  return c.json({ ok: true })
+})
+
+// 切换当前使用的账号
+app.post('/api/accounts/:id/activate', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储（ACCOUNTS_KV），无法切换账号' }, 400)
+  const id = c.req.param('id')
+  if (!effectiveAccounts(c._store, c.env).some((a) => a.id === id)) {
+    return c.json({ error: '账号不存在' }, 404)
+  }
+  c._store.activeId = id
+  await writeStore(c.env, c._store)
+  return c.json({ ok: true })
+})
+
 // ---------- 桶统计缓存（Cache API，1 小时） ----------
 const STATS_TTL = 3600
-const statsCacheKey = (bucket) =>
-  new Request(`https://r2x-cache.internal/stats/${encodeURIComponent(bucket)}`)
+// 缓存 key 按账号隔离，避免不同账号的同名桶串缓存
+const statsCacheKey = (c, bucket) =>
+  new Request(
+    `https://r2x-cache.internal/stats/${encodeURIComponent(c._account?.id || 'env')}/${encodeURIComponent(bucket)}`
+  )
 
-async function getCachedStats(bucket) {
-  const cached = await caches.default.match(statsCacheKey(bucket))
+async function getCachedStats(c, bucket) {
+  const cached = await caches.default.match(statsCacheKey(c, bucket))
   return cached ? cached.json() : null
 }
 
-async function putCachedStats(bucket, stats) {
+async function putCachedStats(c, bucket, stats) {
   await caches.default.put(
-    statsCacheKey(bucket),
+    statsCacheKey(c, bucket),
     new Response(JSON.stringify(stats), {
       headers: { 'Cache-Control': `public, max-age=${STATS_TTL}` },
     })
@@ -159,7 +355,7 @@ app.get('/api/buckets', authGuard, async (c) => {
   const xml = await res.text()
   const names = xmlBlocks(xml, 'Bucket').map((b) => xmlPick(b, 'Name')).filter(Boolean).sort()
   const buckets = await Promise.all(
-    names.map(async (name) => ({ name, stats: await getCachedStats(name) }))
+    names.map(async (name) => ({ name, stats: await getCachedStats(c, name) }))
   )
   return c.json({ buckets })
 })
@@ -169,7 +365,7 @@ app.get('/api/stats', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
   if (!bucket) return c.json({ error: 'missing bucket' }, 400)
 
-  const cached = await getCachedStats(bucket)
+  const cached = await getCachedStats(c, bucket)
   if (cached) return c.json({ bucket, stats: cached, cached: true })
 
   let objects = 0
@@ -200,7 +396,7 @@ app.get('/api/stats', authGuard, async (c) => {
     modifiedText: lastModified ? formatTime(lastModified) : null,
     computedAt: new Date().toISOString(),
   }
-  await putCachedStats(bucket, stats)
+  await putCachedStats(c, bucket, stats)
   return c.json({ bucket, stats, cached: false })
 })
 
@@ -217,7 +413,7 @@ app.delete('/api/object', authGuard, async (c) => {
   if (!res.ok && res.status !== 204) return c.json({ error: `DeleteObject failed: ${res.status}` }, 500)
 
   // 统计缓存失效
-  await caches.default.delete(statsCacheKey(bucket))
+  await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: true })
 })
 
@@ -244,7 +440,7 @@ app.post('/api/delete-batch', authGuard, async (c) => {
     key: xmlPick(e, 'Key'),
     message: xmlPick(e, 'Message') || xmlPick(e, 'Error'),
   }))
-  await caches.default.delete(statsCacheKey(bucket))
+  await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: errors.length === 0, deleted: keys.length - errors.length, errors })
 })
 
@@ -300,7 +496,7 @@ app.post('/api/delete-tree', authGuard, async (c) => {
       token = xmlPick(xml, 'NextContinuationToken') || null
     } while (token)
   }
-  if (deleted > 0) await caches.default.delete(statsCacheKey(bucket))
+  if (deleted > 0) await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: errors.length === 0, deleted, errors })
 })
 
@@ -342,7 +538,7 @@ app.post('/api/move', authGuard, async (c) => {
       failed.push({ from, to, reason: e.message || 'unknown error' })
     }
   }
-  await caches.default.delete(statsCacheKey(bucket))
+  await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: failed.length === 0, moved, failed })
 })
 
@@ -426,7 +622,7 @@ app.post('/api/move-tree', authGuard, async (c) => {
     moved += count
     folders.push({ from: it.from, to: it.to, count })
   }
-  await caches.default.delete(statsCacheKey(bucket))
+  await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: failed.length === 0, moved, folders, failed })
 })
 
@@ -449,7 +645,7 @@ app.post('/api/upload', authGuard, async (c) => {
     body,
   })
   if (!res.ok) return c.json({ error: `PutObject failed: ${res.status}` }, 500)
-  await caches.default.delete(statsCacheKey(bucket))
+  await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: true, key })
 })
 
@@ -517,7 +713,7 @@ app.post('/api/multipart/complete', authGuard, async (c) => {
     const t = await res.text().catch(() => '')
     return c.json({ error: `CompleteMultipartUpload failed: ${res.status} ${t.slice(0, 200)}` }, 500)
   }
-  await caches.default.delete(statsCacheKey(bucket))
+  await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: true, key })
 })
 
