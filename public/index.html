@@ -87,7 +87,8 @@
   }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; cursor: pointer; }
   .brand:hover { background: var(--hover); }
-  .header-right { display: flex; align-items: center; gap: 8px; }
+  .header-selects { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto; }
+  .header-actions { display: flex; align-items: center; gap: 2px; }
   #bucket-select,
   #account-select {
     max-width: 180px;
@@ -731,9 +732,11 @@
     .row .time { min-width: 0; text-align: left; display: inline; }
     .row .time::before { content: " · "; }
     .copy-btn, .del-btn, .rename-btn { width: 30px; height: 30px; }
-    .brand { font-size: 15px; }
-    #bucket-select { max-width: 130px; }
-    #account-select { max-width: 104px; }
+    .brand { font-size: 15px; flex: 1; min-width: 0; white-space: nowrap; }
+    /* 移动端顶栏两行：第一行 logo + 操作按钮，第二行选择器平铺 */
+    header { flex-wrap: wrap; row-gap: 10px; }
+    .header-selects { order: 3; flex: 1 1 100%; margin-left: 0; }
+    #bucket-select, #account-select { flex: 1 1 0; min-width: 0; max-width: none; }
   }
 </style>
 </head>
@@ -755,9 +758,11 @@
 <div id="main-view" hidden>
   <header>
     <a class="brand" href="#/" title="返回存储桶列表" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:inherit;border-radius:10px;padding:4px 8px;margin:-4px -8px;transition:background .15s"><span id="brand-logo" style="display:inline-flex"></span>R2 Explorer</a>
-    <div class="header-right">
+    <div class="header-selects">
       <select id="account-select" title="切换 R2 账号" hidden></select>
       <select id="bucket-select" title="选择存储桶" hidden></select>
+    </div>
+    <div class="header-actions">
       <button class="icon-btn" id="accounts-btn" title="管理 R2 账号">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
