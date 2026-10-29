@@ -763,11 +763,11 @@
 <!-- 移动目标选择 -->
 <div id="move-overlay" hidden>
   <div class="move-modal">
-    <h3>移动文件</h3>
+    <h3>移动项目</h3>
     <div class="mv-sub" id="mv-sub"></div>
     <div class="mv-crumbs" id="mv-crumbs"></div>
     <div class="mv-list" id="mv-list"></div>
-    <div class="mv-note">注意：同名文件将被覆盖，文件夹不可移动</div>
+    <div class="mv-note">注意：同名文件将被覆盖；文件夹将递归移动其中所有文件（含子文件夹），不能移动到自身子目录</div>
     <div class="modal-actions">
       <button id="mv-cancel">取 消</button>
       <button class="btn-primary" id="mv-confirm" style="padding:9px 18px">移动到此处</button>
@@ -1123,6 +1123,9 @@
       <div class="name" title="${d.name}">${d.name}</div>
       <div class="meta-wrap"><span class="meta size">—</span><span class="meta time">文件夹</span></div>
       <div class="actions">
+        <button class="move-btn" title="移动文件夹（递归移动其中所有文件）">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6"/><path d="M13 11l2 2-2 2"/></svg>
+        </button>
         <button class="del-btn" title="删除文件夹（递归删除其中所有文件）">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
@@ -1138,6 +1141,7 @@
       row.querySelector('.chk').checked = true
       row.classList.add('selected')
     }
+    row.querySelector('.move-btn').onclick = () => openMoveModal([d])
     row.querySelector('.del-btn').onclick = () => openDeleteModal(d)
     return row
   }
@@ -1563,10 +1567,6 @@
   $('sel-move').onclick = () => {
     const items = curItems().filter((f) => selected.has(f.path))
     if (!items.length) return
-    if (items.some((f) => f.path.endsWith('/'))) {
-      toast('文件夹不支持移动，请先取消勾选文件夹')
-      return
-    }
     openMoveModal(items)
   }
 
@@ -1574,8 +1574,9 @@
   let moveState = null // { files, target }
 
   function openMoveModal(files) {
+    const hasDir = files.some((f) => f.path.endsWith('/'))
     moveState = { files, target: parseHash().prefix }
-    $('mv-sub').textContent = `已选 ${files.length} 个文件，选择目标文件夹`
+    $('mv-sub').textContent = `已选 ${files.length} 项${hasDir ? '（含文件夹，将递归移动其中所有文件）' : ''}，选择目标文件夹`
     renderMoveCrumbs()
     loadMoveDirs(moveState.target)
     $('mv-confirm').disabled = false
@@ -1640,32 +1641,47 @@
   $('mv-confirm').onclick = async () => {
     if (!moveState) return
     const bucket = currentBucket()
-    const items = moveState.files
-      .map((f) => ({ from: f.path, to: moveState.target + f.name }))
+    const target = moveState.target
+    // 文件夹的 to 要带尾部斜杠
+    const all = moveState.files
+      .map((f) => ({ from: f.path, to: target + f.name + (f.path.endsWith('/') ? '/' : '') }))
       .filter((it) => it.from !== it.to)
-    if (!items.length) {
+    if (!all.length) {
       toast('目标位置与当前位置相同')
       return
     }
+    const fileItems = all.filter((it) => !it.from.endsWith('/'))
+    const dirItems = all.filter((it) => it.from.endsWith('/'))
     const btn = $('mv-confirm')
     btn.disabled = true
     btn.textContent = '移动中…'
     try {
-      const res = await api('/api/move', {
-        method: 'POST',
-        body: JSON.stringify({ bucket, items }),
-      })
+      let moved = 0
+      const failed = []
+      // 文件：走原有批量移动接口
+      if (fileItems.length) {
+        const res = await api('/api/move', {
+          method: 'POST',
+          body: JSON.stringify({ bucket, items: fileItems }),
+        })
+        moved += res.moved || 0
+        if (res.failed) failed.push(...res.failed)
+      }
+      // 文件夹：走递归移动接口
+      if (dirItems.length) {
+        const res = await api('/api/move-tree', {
+          method: 'POST',
+          body: JSON.stringify({ bucket, items: dirItems }),
+        })
+        moved += res.moved || 0
+        if (res.failed) failed.push(...res.failed)
+      }
       closeMoveModal()
       clearSelection()
-      document.querySelectorAll('#rows .row.file').forEach((r) => {
-        r.classList.remove('selected')
-        const chk = r.querySelector('.chk')
-        if (chk) chk.checked = false
-      })
-      if (res.failed && res.failed.length) {
-        toast(`已移动 ${res.moved} 个，${res.failed.length} 个失败：${res.failed[0].reason}`)
+      if (failed.length) {
+        toast(`已移动 ${moved} 个文件，${failed.length} 个失败：${failed[0].reason}`)
       } else {
-        toast(`已移动 ${res.moved} 个文件到 ${moveState.target || '根目录'}`)
+        toast(`已移动 ${moved} 个文件到 ${target || '根目录'}`)
       }
       routeLoad()
     } catch (e) {

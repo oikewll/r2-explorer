@@ -346,6 +346,90 @@ app.post('/api/move', authGuard, async (c) => {
   return c.json({ ok: failed.length === 0, moved, failed })
 })
 
+// 移动文件夹（递归：按前缀列举 → 逐个 CopyObject → 批量删除已复制的源对象）
+app.post('/api/move-tree', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const failed = []
+  const valid = []
+  for (const raw of Array.isArray(body.items) ? body.items : []) {
+    const from = String(raw.from || '')
+    const to = String(raw.to || '')
+    if (!from.endsWith('/') || !to.endsWith('/') || to.includes('//') || from === to) {
+      failed.push({ from, to, reason: '参数不合法' })
+    } else if (to.startsWith(from)) {
+      failed.push({ from, to, reason: '不能移动到自身子目录' })
+    } else {
+      valid.push({ from, to })
+    }
+  }
+  if (!bucket) return c.json({ error: 'missing bucket' }, 400)
+  if (!valid.length) return c.json({ ok: false, moved: 0, folders: [], failed })
+
+  const escXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  let moved = 0
+  const folders = []
+  for (const it of valid) {
+    let count = 0
+    let token = null
+    do {
+      // 分页列出该前缀下所有对象（递归含子文件夹）
+      const u = new URL(`${c._s3Base}/${bucket}`)
+      u.searchParams.set('list-type', '2')
+      u.searchParams.set('prefix', it.from)
+      u.searchParams.set('max-keys', '1000')
+      if (token) u.searchParams.set('continuation-token', token)
+      const res = await c._r2.fetch(u)
+      if (!res.ok) {
+        failed.push({ from: it.from, to: it.to, reason: `ListObjects failed: ${res.status}` })
+        break
+      }
+      const xml = await res.text()
+      const keys = xmlBlocks(xml, 'Contents').map((o) => xmlPick(o, 'Key')).filter(Boolean)
+      const copied = []
+      for (const key of keys) {
+        const nk = it.to + key.slice(it.from.length)
+        try {
+          const cp = await c._r2.fetch(objUrl(c, bucket, nk), {
+            method: 'PUT',
+            headers: {
+              'x-amz-copy-source': `/${bucket}/${key.split('/').map(encodeURIComponent).join('/')}`,
+            },
+          })
+          if (cp.ok) {
+            copied.push(key)
+            count++
+          } else {
+            failed.push({ from: key, to: nk, reason: `CopyObject failed: ${cp.status}` })
+          }
+        } catch (e) {
+          failed.push({ from: key, to: nk, reason: e.message || 'unknown error' })
+        }
+      }
+      // 只删已成功复制的源对象，避免失败时丢数据，分批 500
+      for (let i = 0; i < copied.length; i += 500) {
+        const batch = copied.slice(i, i + 500)
+        const delXml = `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>${batch
+          .map((k) => `<Object><Key>${escXml(k)}</Key></Object>`)
+          .join('')}</Delete>`
+        const del = await c._r2.fetch(`${c._s3Base}/${bucket}?delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/xml' },
+          body: delXml,
+        })
+        if (!del.ok) {
+          failed.push({ from: it.from, to: it.to, reason: `DeleteObjects failed: ${del.status}` })
+        }
+      }
+      token = xmlPick(xml, 'NextContinuationToken') || null
+    } while (token)
+    moved += count
+    folders.push({ from: it.from, to: it.to, count })
+  }
+  await caches.default.delete(statsCacheKey(bucket))
+  return c.json({ ok: failed.length === 0, moved, folders, failed })
+})
+
 // 上传文件（Worker 代理转发到 R2，单文件上限 100MB）
 app.post('/api/upload', authGuard, async (c) => {
   const bucket = c.req.query('bucket')

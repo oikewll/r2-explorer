@@ -332,6 +332,87 @@ app.post('/api/move', authGuard, async (c) => {
   return c.json({ ok: failed.length === 0, moved, failed })
 })
 
+// 移动文件夹（递归：按前缀列举 → 逐个 CopyObject → 批量删除已复制的源对象）
+app.post('/api/move-tree', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const bucket = body.bucket
+  const failed = []
+  const valid = []
+  for (const raw of Array.isArray(body.items) ? body.items : []) {
+    const from = String(raw.from || '')
+    const to = String(raw.to || '')
+    if (!from.endsWith('/') || !to.endsWith('/') || to.includes('//') || from === to) {
+      failed.push({ from, to, reason: '参数不合法' })
+    } else if (to.startsWith(from)) {
+      failed.push({ from, to, reason: '不能移动到自身子目录' })
+    } else {
+      valid.push({ from, to })
+    }
+  }
+  if (!bucket) return c.json({ error: 'missing bucket' }, 400)
+  if (!valid.length) return c.json({ ok: false, moved: 0, folders: [], failed })
+
+  let moved = 0
+  const folders = []
+  for (const it of valid) {
+    let count = 0
+    let token
+    let list
+    do {
+      try {
+        list = await s3.send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: it.from,
+            MaxKeys: 1000,
+            ContinuationToken: token,
+          })
+        )
+      } catch (e) {
+        failed.push({ from: it.from, to: it.to, reason: 'ListObjects failed: ' + (e.message || e) })
+        break
+      }
+      const keys = (list.Contents || []).map((o) => o.Key).filter(Boolean)
+      const copied = []
+      for (const key of keys) {
+        const nk = it.to + key.slice(it.from.length)
+        try {
+          await s3.send(
+            new CopyObjectCommand({
+              Bucket: bucket,
+              CopySource: `/${bucket}/${encodedKey(key)}`,
+              Key: nk,
+            })
+          )
+          copied.push(key)
+          count++
+        } catch (e) {
+          failed.push({ from: key, to: nk, reason: 'CopyObject failed: ' + (e.message || e) })
+        }
+      }
+      // 只删已成功复制的源对象，避免失败时丢数据，分批 500
+      for (let i = 0; i < copied.length; i += 500) {
+        const batch = copied.slice(i, i + 500)
+        try {
+          await s3.send(
+            new DeleteObjectsCommand({
+              Bucket: bucket,
+              Delete: { Objects: batch.map((k) => ({ Key: k })), Quiet: true },
+            })
+          )
+        } catch (e) {
+          failed.push({ from: it.from, to: it.to, reason: 'DeleteObjects failed: ' + (e.message || e) })
+        }
+      }
+      token = list.IsTruncated ? list.NextContinuationToken : undefined
+    } while (token)
+    moved += count
+    folders.push({ from: it.from, to: it.to, count })
+  }
+  statsCache.delete(bucket)
+  return c.json({ ok: failed.length === 0, moved, folders, failed })
+})
+
 // 上传文件（单文件上限 100MB）
 app.post('/api/upload', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
