@@ -22,15 +22,15 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         id: deploy
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # 可选：用仓库变量 WRANGLER_CONFIG 指定自己的配置文件（如 wrangler.prod.toml），
           # 其中可放真实的自定义域 / KV id 等个人配置；默认使用仓库内的 wrangler.toml
-          command: wrangler deploy ${WRANGLER_CONFIG:+-c $WRANGLER_CONFIG}
-        env:
           WRANGLER_CONFIG: ${{ vars.WRANGLER_CONFIG }}
+        # run 步骤恒走 shell，wrangler 在 devDependencies 里（wrangler-action@v3 是浮动 tag，
+        # 上游曾出现 npx 不自动确认、命令不走 shell 导致参数原样透传的问题，故改为直接调用）
+        run: npx wrangler deploy ${WRANGLER_CONFIG:+-c $WRANGLER_CONFIG}
 
       - name: Notify
         if: always()
