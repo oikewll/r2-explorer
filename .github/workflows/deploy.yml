@@ -20,6 +20,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Restore prod config
+        # wrangler.prod.toml（真实域名/KV id）不进开源仓库，内容 base64 存在 secret 里，
+        # 部署时还原为仓库变量 WRANGLER_CONFIG 指定的文件名
+        if: ${{ vars.WRANGLER_CONFIG != '' }}
+        env:
+          WRANGLER_CONFIG_B64: ${{ secrets.WRANGLER_CONFIG_B64 }}
+        run: |
+          if [ -z "$WRANGLER_CONFIG_B64" ]; then
+            echo "::error::仓库变量 WRANGLER_CONFIG 已设置但缺少 secret WRANGLER_CONFIG_B64"
+            exit 1
+          fi
+          printf '%s' "$WRANGLER_CONFIG_B64" | base64 -d > "${{ vars.WRANGLER_CONFIG }}"
+          echo "已还原配置文件: ${{ vars.WRANGLER_CONFIG }}"
+
       - name: Deploy to Cloudflare Workers
         id: deploy
         env:
