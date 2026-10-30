@@ -321,6 +321,13 @@
   #modal-confirm:disabled { opacity: .45; cursor: not-allowed; }
 
   /* 新建存储桶模态框 */
+  #create-bucket-overlay {
+    position: fixed; inset: 0;
+    background: rgba(16, 24, 40, .45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    z-index: 220;
+  }
   #create-bucket-overlay .modal h3 { color: var(--text); }
   #cb-error { color: var(--danger); font-size: 13px; margin-top: 8px; min-height: 18px; }
 
