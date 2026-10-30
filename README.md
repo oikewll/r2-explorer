@@ -6,6 +6,7 @@
 - 前端：单页原生 HTML/CSS/JS，hash 路由（`#/桶名/路径/`），适配手机与 PC
 - 鉴权：密码登录，HMAC 签名 HttpOnly Cookie，30 天有效
 - 多账号：界面里绑定/编辑/解绑多个 R2 账号，顶栏一键切换，绑定前自动验证凭证
+- 新建桶：首页（桶总览）一键新建存储桶，无需去 Cloudflare 控制台
 - 直链策略：各账号的 `CDN 映射` 里配置了自定义域的桶用 CDN 链接；未配置的桶自动生成 **7 天预签名直链**
 - 部署：Cloudflare Workers（推荐）或 Docker 自托管
 
@@ -94,6 +95,7 @@ docker run -d --name r2-explorer -p 3000:3000 \
 | DELETE | `/api/accounts/:id` | 解绑账号 |
 | POST | `/api/accounts/:id/activate` | 切换为当前使用账号 |
 | GET | `/api/buckets` | 列出当前账号下所有桶 |
+| POST | `/api/buckets` | 新建存储桶 `{ name }`（当前账号下，名称仅小写字母/数字/连字符） |
 | GET | `/api/list?bucket=x&prefix=a/` | 列目录（文件夹 + 文件 + 直链） |
 | GET | `/api/info?bucket=x&key=a/b` | 单文件详情（大小/时间/ETag/类型） |
 | DELETE | `/api/object?bucket=x&key=a/b` | 删除单个文件 |

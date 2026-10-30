@@ -360,6 +360,20 @@ app.get('/api/buckets', authGuard, async (c) => {
   return c.json({ buckets })
 })
 
+// 新建存储桶（在当前使用的账号下）
+app.post('/api/buckets', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const name = String(body.name || '').trim()
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(name)) {
+    return c.json({ error: '桶名称仅支持小写字母、数字和连字符（-），3–63 个字符，且以字母或数字开头结尾' }, 400)
+  }
+  const res = await c._r2.fetch(`${c._s3Base}/${name}`, { method: 'PUT' })
+  if (res.ok) return c.json({ ok: true, name })
+  if (res.status === 409) return c.json({ error: '同名存储桶已存在' }, 409)
+  const xml = await res.text()
+  return c.json({ error: `CreateBucket failed: ${xmlPick(xml, 'Code') || res.status}` }, 500)
+})
+
 // 桶统计：分页列举聚合对象数/总大小/最后更新时间
 app.get('/api/stats', authGuard, async (c) => {
   const bucket = c.req.query('bucket')

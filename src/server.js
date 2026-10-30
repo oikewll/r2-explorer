@@ -12,6 +12,7 @@ import {
   DeleteObjectsCommand,
   CopyObjectCommand,
   PutObjectCommand,
+  CreateBucketCommand,
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
@@ -369,6 +370,24 @@ app.get('/api/buckets', authGuard, async (c) => {
   const names = (res.Buckets || []).map((b) => b.Name).filter(Boolean).sort()
   const buckets = names.map((name) => ({ name, stats: getCachedStats(name) }))
   return c.json({ buckets })
+})
+
+// 新建存储桶（在当前使用的账号下）
+app.post('/api/buckets', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const name = String(body.name || '').trim()
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(name)) {
+    return c.json({ error: '桶名称仅支持小写字母、数字和连字符（-），3–63 个字符，且以字母或数字开头结尾' }, 400)
+  }
+  try {
+    await c._s3.send(new CreateBucketCommand({ Bucket: name }))
+    return c.json({ ok: true, name })
+  } catch (e) {
+    if (e.name === 'BucketAlreadyExists' || e.name === 'BucketAlreadyOwnedByYou' || e?.$metadata?.httpStatusCode === 409) {
+      return c.json({ error: '同名存储桶已存在' }, 409)
+    }
+    return c.json({ error: `CreateBucket failed: ${e.message || e}` }, 500)
+  }
 })
 
 // 桶统计：分页列举聚合对象数/总大小/最后更新时间

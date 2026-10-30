@@ -241,6 +241,11 @@
   .stats { margin-top: 12px; font-size: 13px; color: var(--text-2); text-align: center; }
 
   /* ---------- bucket overview ---------- */
+  #overview-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 12px;
+  }
+  #overview-toolbar .ov-title { font-weight: 600; font-size: 15px; }
   #overview { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .bucket-card {
     background: var(--card);
@@ -314,6 +319,10 @@
   #modal-confirm { background: var(--danger); color: #fff; }
   #modal-confirm:hover { filter: brightness(1.08); }
   #modal-confirm:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* 新建存储桶模态框 */
+  #create-bucket-overlay .modal h3 { color: var(--text); }
+  #cb-error { color: var(--danger); font-size: 13px; margin-top: 8px; min-height: 18px; }
 
   /* ---------- 账号管理 ---------- */
   #accounts-overlay {
@@ -773,6 +782,10 @@
   </header>
 
   <!-- 桶总览 -->
+  <div id="overview-toolbar" hidden>
+    <span class="ov-title">存储桶</span>
+    <button class="sel-all-btn" id="create-bucket-btn" style="display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>新建存储桶</button>
+  </div>
   <div id="overview" hidden></div>
 
   <!-- 文件浏览 -->
@@ -865,6 +878,20 @@
     <div class="modal-actions">
       <button id="rename-cancel">取 消</button>
       <button class="btn-primary" id="rename-confirm" disabled style="padding:9px 18px">确 定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建存储桶 -->
+<div id="create-bucket-overlay" hidden>
+  <div class="modal">
+    <h3>新建存储桶</h3>
+    <p class="modal-warn">在当前使用的 R2 账号下创建新的存储桶。名称仅支持小写字母、数字和连字符（-），3–63 个字符，须以字母或数字开头结尾。</p>
+    <input type="text" id="cb-name" placeholder="bucket-name" autocomplete="off" spellcheck="false">
+    <div id="cb-error"></div>
+    <div class="modal-actions">
+      <button id="cb-cancel">取 消</button>
+      <button class="btn-primary" id="cb-confirm" disabled style="padding:9px 18px">创 建</button>
     </div>
   </div>
 </div>
@@ -1059,6 +1086,7 @@
   function setView(v) {
     const isOverview = v === 'overview'
     $('overview').hidden = !isOverview
+    $('overview-toolbar').hidden = !isOverview
     $('browser').hidden = isOverview
     $('bucket-select').hidden = isOverview
   }
@@ -1136,7 +1164,7 @@
       const buckets = await loadBuckets()
       el.innerHTML = ''
       if (!buckets.length) {
-        el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:56px 20px;color:var(--text-2)"><div style="display:flex;justify-content:center;margin-bottom:10px">' + ficon('bucket', 56) + '</div>账号下没有找到 R2 存储桶</div>'
+        el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:56px 20px;color:var(--text-2)"><div style="display:flex;justify-content:center;margin-bottom:10px">' + ficon('bucket', 56) + '</div>账号下没有找到 R2 存储桶<br>点击上方「新建存储桶」创建一个</div>'
         return
       }
       buckets.forEach((b, i) => el.appendChild(bucketCard(b, i)))
@@ -1409,6 +1437,7 @@
     if (e.key !== 'Escape') return
     if (!$v.overlay.hidden) closeViewer()
     else if (!$('accounts-overlay').hidden) closeAccountsModal()
+    else if (!$('create-bucket-overlay').hidden) closeCreateBucketModal()
     else if (!$('move-overlay').hidden) closeMoveModal()
     else if (!$('rename-overlay').hidden) closeRenameModal()
   })
@@ -1963,6 +1992,60 @@
       }
     } finally {
       btn.textContent = '确 定'
+    }
+  }
+
+  // ---------- 新建存储桶 ----------
+  function validateBucketName(name) {
+    if (!name) return '请输入桶名称'
+    if (name.length < 3 || name.length > 63) return '长度需在 3–63 个字符之间'
+    if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(name)) return '仅支持小写字母、数字和连字符（-），且以字母或数字开头结尾'
+    return ''
+  }
+
+  function openCreateBucketModal() {
+    $('cb-name').value = ''
+    $('cb-error').textContent = ''
+    $('cb-confirm').disabled = true
+    $('create-bucket-overlay').hidden = false
+    $('cb-name').focus()
+  }
+
+  function closeCreateBucketModal() {
+    $('create-bucket-overlay').hidden = true
+  }
+
+  $('cb-name').addEventListener('input', (e) => {
+    const msg = validateBucketName(e.target.value.trim())
+    $('cb-error').textContent = msg
+    $('cb-confirm').disabled = !!msg
+  })
+  $('cb-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !$('cb-confirm').disabled) $('cb-confirm').click()
+  })
+  $('cb-cancel').onclick = closeCreateBucketModal
+  $('create-bucket-overlay').addEventListener('click', (e) => {
+    if (e.target === $('create-bucket-overlay')) closeCreateBucketModal()
+  })
+  $('create-bucket-btn').onclick = openCreateBucketModal
+
+  $('cb-confirm').onclick = async () => {
+    const name = $('cb-name').value.trim()
+    if (validateBucketName(name)) return
+    const btn = $('cb-confirm')
+    btn.disabled = true
+    btn.textContent = '创建中…'
+    try {
+      await api('/api/buckets', { method: 'POST', body: JSON.stringify({ name }) })
+      closeCreateBucketModal()
+      toast('已创建存储桶：' + name)
+      await loadBuckets().catch(() => {}) // 同步顶部选择器
+      routeLoad() // 刷新总览
+    } catch (e) {
+      if (e.message !== 'unauthorized') $('cb-error').textContent = '创建失败：' + e.message
+    } finally {
+      btn.disabled = false
+      btn.textContent = '创 建'
     }
   }
 
