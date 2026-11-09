@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { fmtSize, fmtTime, fmtNum, categoryOf, iconType } from '../lib/format'
 import { FIcon, UIcon } from './icons'
+// hljs 主题样式（重构时从 CDN 内联丢了，没它语法 token 不着色）
+import 'highlight.js/styles/github.css'
 
 const PLAIN_EXT = new Set(['txt', 'log', 'csv'])
 const LANG_BY_EXT = {
