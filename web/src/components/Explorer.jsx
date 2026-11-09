@@ -200,6 +200,9 @@ export default function Explorer({ route }) {
       playFromList(audioFiles, f)
     } else if (cat === 'video') {
       setPreview({ mode: 'file', f, siblings: items.files.filter((x) => categoryOf(x.name) === 'video') })
+    } else if (cat === 'image') {
+      // 图片预览带同目录图片列表：查看器内可直接切换上一张/下一张
+      setPreview({ mode: 'file', f, siblings: items.files.filter((x) => categoryOf(x.name) === 'image') })
     } else {
       setPreview({ mode: 'file', f })
     }
@@ -373,6 +376,7 @@ export default function Explorer({ route }) {
           onClose={() => setPreview(null)}
           onBack={() => setPreview((p) => (p.mode === 'zipEntry' ? { mode: 'zip', f: p.f, entries: p.entries, total: p.total, truncated: p.truncated } : null))}
           setPreview={setPreview}
+          onSaved={refresh}
         />
       )}
       {confirm && <Confirm {...confirm} onClose={() => setConfirm(null)} />}

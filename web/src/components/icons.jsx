@@ -39,6 +39,28 @@ const GLYPHS = {
       <path d="M9 17h6" />
     </>
   ),
+  word: (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M8 13l1.5 4 1.5-4 1.5 4 1.5-4" />
+    </>
+  ),
+  sheet: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M9 10v10" />
+      <path d="M15 10v10" />
+    </>
+  ),
+  slide: (
+    <>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M12 16v4" />
+      <path d="M8 20h8" />
+    </>
+  ),
   archive: (
     <>
       <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -89,6 +111,9 @@ const ICON_COLORS = {
   video: '#f43f5e',
   audio: '#14b8a6',
   pdf: '#ef4444',
+  word: '#2b6cd4',
+  sheet: '#1a9850',
+  slide: '#e8631a',
   archive: '#f97316',
   code: '#3b82f6',
   doc: '#64748b',
@@ -267,6 +292,81 @@ const UI_PATHS = {
       <line x1="4" y1="12" x2="20" y2="12" />
       <line x1="4" y1="18" x2="13" y2="18" />
       <polygon points="17 14 22 17 17 20" fill="currentColor" stroke="none" />
+    </>
+  ),
+  zoomIn: (
+    <>
+      <circle cx="11" cy="11" r="7.5" />
+      <line x1="21" y1="21" x2="16.2" y2="16.2" />
+      <line x1="11" y1="8" x2="11" y2="14" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </>
+  ),
+  zoomOut: (
+    <>
+      <circle cx="11" cy="11" r="7.5" />
+      <line x1="21" y1="21" x2="16.2" y2="16.2" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </>
+  ),
+  rotateCw: (
+    <>
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <polyline points="21 3 21 8 16 8" />
+    </>
+  ),
+  rotateCcw: (
+    <>
+      <path d="M3 12a9 9 0 1 0 9-9c-2.52 0-4.93 1-6.74 2.74L3 8" />
+      <polyline points="3 3 3 8 8 8" />
+    </>
+  ),
+  flipH: (
+    <>
+      <path d="M12 3v18" strokeDasharray="2.5 3" />
+      <path d="M8 7L3 12l5 5V7z" />
+      <path d="M16 7l5 5-5 5V7z" />
+    </>
+  ),
+  flipV: (
+    <>
+      <path d="M3 12h18" strokeDasharray="2.5 3" />
+      <path d="M7 8l5-5 5 5H7z" />
+      <path d="M7 16h10l-5 5-5-5z" />
+    </>
+  ),
+  crop: (
+    <>
+      <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+      <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+    </>
+  ),
+  sliders: (
+    <>
+      <line x1="4" y1="8" x2="20" y2="8" />
+      <line x1="4" y1="16" x2="20" y2="16" />
+      <circle cx="9" cy="8" r="2.2" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="16" r="2.2" fill="currentColor" stroke="none" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16.5" />
+      <line x1="12" y1="7.5" x2="12.01" y2="7.5" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M3 7v6h6" />
+      <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+    </>
+  ),
+  save: (
+    <>
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <path d="M17 21v-8H7v8" />
+      <path d="M7 3v5h8" />
     </>
   ),
 }

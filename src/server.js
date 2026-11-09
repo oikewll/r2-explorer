@@ -25,6 +25,7 @@ import os from 'node:os'
 import zlib from 'node:zlib'
 import fs from 'node:fs'
 import path from 'node:path'
+import { detectArchiveKind, getArchiveBuffer, listRar, list7z, listTar, extractRar, extract7z, extractTar } from './archives.js'
 
 // ---------- env ----------
 const {
@@ -883,7 +884,32 @@ app.get('/api/text', authGuard, async (c) => {
   })
 })
 
-// 列出 zip 内文件
+// 对象内容同源代理（图片画布类操作需要同源，避免预签名/CDN 直链无 CORS 导致画布污染；Range 透传供 EXIF 局部拉取）
+app.get('/api/raw', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  const range = c.req.header('range')
+  let obj
+  try {
+    obj = await c._s3.send(
+      new GetObjectCommand({ Bucket: bucket, Key: key, ...(range ? { Range: range } : {}) })
+    )
+  } catch (e) {
+    const code = e?.$metadata?.httpStatusCode
+    if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
+    return c.json({ error: `GetObject failed: ${code || e.message}` }, 500)
+  }
+  const headers = {
+    'Content-Type': obj.ContentType || 'application/octet-stream',
+    ...(obj.ContentLength != null ? { 'Content-Length': String(obj.ContentLength) } : {}),
+    ...(range && obj.ContentRange ? { 'Content-Range': obj.ContentRange } : {}),
+    'Cache-Control': 'private, max-age=300',
+  }
+  return c.body(obj.Body.transformToWebStream(), 200, headers)
+})
+
+// 列出压缩包内文件（zip 用 Range 手工解析；rar/7z/tar.gz 走 archives.js 整包 WASM 解析）
 app.get('/api/zip', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
   const key = c.req.query('key')
@@ -898,13 +924,30 @@ app.get('/api/zip', authGuard, async (c) => {
     return c.json({ error: `HEAD failed: ${code || e.message}` }, 500)
   }
 
+  // 读文件头识别格式（tar 的 magic 在偏移 257 处，得读 512 字节）
+  let kind = null
+  try {
+    const head = await s3GetRange(c, bucket, key, 0, Math.min(size, 512) - 1)
+    kind = detectArchiveKind(head)
+  } catch {}
+
+  if (kind === 'rar' || kind === '7z' || kind === 'tar' || kind === 'gzip') {
+    try {
+      const { buf, kind: resolved } = await getArchiveBuffer(c._s3, bucket, key, size)
+      const entries = resolved === 'rar' ? await listRar(buf) : resolved === '7z' ? await list7z(buf) : await listTar(buf)
+      return c.json({ bucket, key, kind: resolved, total: entries.length, entries, truncated: entries.length >= 5000 })
+    } catch (e) {
+      return c.json({ error: e.message }, e.status || 500)
+    }
+  }
+
   const tailLen = Math.min(size, 65536 + 65535)
   const buf = await s3GetRange(c, bucket, key, size - tailLen, size - 1)
   let eocd = -1
   for (let i = buf.length - 22; i >= 0; i--) {
     if (u32(buf, i) === 0x06054b50) { eocd = i; break }
   }
-  if (eocd < 0) return c.json({ error: '不是标准的 ZIP 格式' }, 400)
+  if (eocd < 0) return c.json({ error: kind === 'zip' ? '不是标准的 ZIP 格式' : '暂不支持该压缩包格式（支持 zip/rar/7z/tar.gz，其他请下载查看）' }, 400)
   const count = u16(buf, eocd + 10)
   const cdSize = u32(buf, eocd + 12)
   const cdOffset = u32(buf, eocd + 16)
@@ -929,7 +972,39 @@ app.get('/api/zip', authGuard, async (c) => {
     p += 46 + nameLen + extraLen + commentLen
   }
   const fileTotal = count - dirCount
-  return c.json({ bucket, key, total: fileTotal, entries, truncated: entries.length < fileTotal })
+  return c.json({ bucket, key, kind: 'zip', total: fileTotal, entries, truncated: entries.length < fileTotal })
+})
+
+// 读取 rar/7z/tar.gz 内单个文件（zip 走上面的 /api/zip-entry）
+app.get('/api/ar-entry', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  const name = c.req.query('name')
+  const download = c.req.query('download') === '1'
+  if (!bucket || !key || !name) return c.json({ error: 'missing params' }, 400)
+  let size
+  try {
+    const head = await c._s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+    size = head.ContentLength
+  } catch (e) {
+    const code = e?.$metadata?.httpStatusCode
+    if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
+    return c.json({ error: `HEAD failed: ${code || e.message}` }, 500)
+  }
+  try {
+    const { buf, kind } = await getArchiveBuffer(c._s3, bucket, key, size)
+    if (kind === 'zip') return c.json({ error: 'zip 请使用 /api/zip-entry' }, 400)
+    const data = kind === 'rar' ? await extractRar(buf, name) : kind === '7z' ? await extract7z(buf, name) : await extractTar(buf, name)
+    if (!data) return c.json({ error: '压缩包内未找到该文件' }, 404)
+    return c.body(data, 200, {
+      'Content-Type': mimeFor(name),
+      'Content-Length': String(data.length),
+      'Content-Disposition': contentDisposition(name, download),
+      'Cache-Control': 'no-store',
+    })
+  } catch (e) {
+    return c.json({ error: e.message }, e.status || 500)
+  }
 })
 
 // 读取 zip 内单个文件
