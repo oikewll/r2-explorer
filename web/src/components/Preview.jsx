@@ -296,9 +296,15 @@ function TextBody({ bucket, path, name }) {
     ;(async () => {
       try {
         const res = await fetch(textUrl(bucket, path))
-        const data = await res.json().catch(() => null)
-        if (!res.ok) throw new Error((data && data.error) || '读取失败')
+        // 只消费一次 body：先 text 再解析错误信息（先 json() 会把成功响应的流读走）
         const text = await res.text()
+        if (!res.ok) {
+          let msg = '读取失败'
+          try {
+            msg = JSON.parse(text).error || msg
+          } catch {}
+          throw new Error(msg)
+        }
         if (alive) setState({ loading: false, text })
       } catch (e) {
         if (alive) setState({ loading: false, error: e.message })
