@@ -5,6 +5,7 @@ import { navigate, buildHash } from '../lib/hash'
 import { useStore } from '../lib/store'
 import { startUpload } from '../lib/uploader'
 import { playFromList } from '../lib/player'
+import { capabilities } from '../lib/video'
 import { FIcon, UIcon } from './icons'
 import Preview from './Preview'
 import Confirm from './Confirm'
@@ -62,6 +63,10 @@ const SORTS = [
 export default function Explorer({ route }) {
   const toast = useStore((s) => s.toast)
   const playerVisible = useStore((s) => s.player.visible)
+  const setDownloadModalOpen = useStore((s) => s.setDownloadModalOpen)
+  const setDownloadTarget = useStore((s) => s.setDownloadTarget)
+  const downloadsVersion = useStore((s) => s.downloadsVersion)
+  const [caps, setCaps] = useState(null)
   const [data, setData] = useState(null) // { crumbs, dirs, files }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -102,6 +107,17 @@ export default function Explorer({ route }) {
   }, [bucket, prefix, reload])
 
   const refresh = () => setReload((n) => n + 1)
+
+  // 服务端能力（离线下载仅 Node/Docker 版支持）
+  useEffect(() => {
+    capabilities().then(setCaps).catch(() => {})
+  }, [])
+
+  // 有下载任务结束（完成/失败）时刷新目录，新文件及时出现
+  useEffect(() => {
+    if (downloadsVersion > 0) refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downloadsVersion])
 
   const items = useMemo(() => {
     if (!data) return { dirs: [], files: [] }
@@ -262,6 +278,19 @@ export default function Explorer({ route }) {
           <UIcon name="upload" size={15} />
           上传
         </button>
+        {caps?.offlineDownload && (
+          <button
+            className="btn-plain h-9"
+            title="粘贴链接，服务器后台下载后转存到当前目录"
+            onClick={() => {
+              setDownloadTarget({ bucket, prefix })
+              setDownloadModalOpen(true)
+            }}
+          >
+            <UIcon name="download" size={15} />
+            离线下载
+          </button>
+        )}
         <input
           ref={fileInput}
           type="file"

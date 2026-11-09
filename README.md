@@ -112,6 +112,10 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 
 支持 OPTIONS / PROPFIND / GET / HEAD / PUT（流式直传，大文件不吃内存）/ DELETE / MKCOL / COPY / MOVE / LOCK / UNLOCK。注意：目录为 R2 前缀合成（空目录用零字节标记兜底）；桶本身不能通过 WebDAV 删除；Workers 版无此功能。
 
+## 离线下载（Docker/Node 版）
+
+文件列表工具栏的「离线下载」：粘贴 http/https 直链，服务器在后台流式下载并**分块直传 R2（不落盘）**，支持 GB 级大文件。链接粘贴后自动探测文件名与大小（优先读 Content-Disposition），可手动改名。任务并发 2 个，超出排队；任务列表实时显示进度与速率，失败可重试，服务重启后未完成任务标记失败可手动重试。Workers 版无此功能。
+
 ## API
 
 | 方法 | 路径 | 说明 |

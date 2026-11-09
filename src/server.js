@@ -27,6 +27,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { detectArchiveKind, getArchiveBuffer, listRar, list7z, listTar, extractRar, extract7z, extractTar } from './archives.js'
 import { registerWebDAV } from './webdav.js'
+import { registerOfflineDownload } from './offline.js'
 
 // ---------- env ----------
 const {
@@ -1083,7 +1084,7 @@ function transcodeGC() {
 }
 setInterval(transcodeGC, 60 * 1000).unref?.()
 
-app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: hasFFmpeg() }))
+app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: hasFFmpeg(), offlineDownload: true }))
 
 app.post('/api/transcode/start', authGuard, async (c) => {
   if (!hasFFmpeg()) return c.json({ error: '服务器未安装 ffmpeg，无法转码在线播放' }, 501)
@@ -1147,6 +1148,18 @@ app.get('/api/transcode/:id/:file', authGuard, (c) => {
   c.header('Cache-Control', 'no-store')
   // HLS 分片（4s 一片）体积小，直接整读
   return c.body(fs.readFileSync(fp))
+})
+
+// ---------- 离线下载（URL 直链 → 后台流式下载直传 R2；仅 Node/Docker 版） ----------
+registerOfflineDownload(app, {
+  dataFile: path.join(path.dirname(ACCOUNTS_PATH), 'downloads.json'),
+  authGuard,
+  resolveAccount: (accountId) => {
+    const acc = effectiveAccounts().find((a) => a.id === accountId)
+    return acc ? { client: getClient(acc) } : null
+  },
+  mimeFor,
+  invalidateStats: (accountId, bucket) => statsCache.delete(`${accountId}:${bucket}`),
 })
 
 // ---------- WebDAV（/dav/，Basic 认证，密码 = 登录密码；仅 Node/Docker 版） ----------

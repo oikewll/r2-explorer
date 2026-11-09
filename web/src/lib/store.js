@@ -42,6 +42,16 @@ export const useStore = create((set) => ({
   clearFinishedUploads: () =>
     set((s) => ({ uploads: s.uploads.filter((t) => !['done', 'fail', 'cancelled'].includes(t.status)) })),
 
+  // 离线下载（服务端任务，轮询同步）
+  downloads: [],
+  setDownloads: (list) => set({ downloads: list }),
+  downloadModalOpen: false,
+  setDownloadModalOpen: (v) => set({ downloadModalOpen: v }),
+  downloadTarget: null, // Explorer 打开弹窗时记录 { bucket, prefix }
+  setDownloadTarget: (t) => set({ downloadTarget: t }),
+  downloadsVersion: 0, // 每当有任务进入终态时 +1（Explorer 据此刷新目录）
+  bumpDownloadsVersion: () => set((s) => ({ downloadsVersion: s.downloadsVersion + 1 })),
+
   // 音乐播放器（AudioEngine 单例的状态；audio 元素在 lib/player.js 里管理）
   player: {
     queue: [], // [{ name, path, bucket, url, presigned }]
