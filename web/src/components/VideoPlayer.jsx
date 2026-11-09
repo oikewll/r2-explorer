@@ -44,9 +44,10 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
     }
 
     ;(async () => {
-      let url = f.url
-      let type = ''
-      const saved = getSavedPos(f.bucket, f.path)
+      try {
+        let url = f.url
+        let type = ''
+        const saved = getSavedPos(f.bucket, f.path)
 
       if (!isNativeVideo(f.name)) {
         // 转码路径：从上次位置开始转（时间线 0 = ss）
@@ -86,26 +87,11 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
       } catch {}
       if (!alive) return
 
-      art = new Artplayer({
+      // 注意：ArtPlayer v5 会校验 option 类型，显式传 undefined（如 subtitle/customType）会直接抛错
+      const opts = {
         container: boxRef.current,
         url,
         type,
-        customType:
-          type === 'm3u8'
-            ? {
-                m3u8: async (video, src) => {
-                  const Hls = (await import('hls.js')).default
-                  if (Hls.isSupported()) {
-                    const hls = new Hls({ maxBufferLength: 30 })
-                    hls.loadSource(src)
-                    hls.attachMedia(video)
-                    video._hls = hls
-                  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                    video.src = src // Safari 原生 HLS
-                  }
-                },
-              }
-            : undefined,
         setting: true,
         fullscreen: true,
         fullscreenWeb: true,
@@ -116,21 +102,52 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
         autoplay: true,
         autoSize: true,
         autoMini: false,
-        subtitle: subtitle
-          ? {
-              url: subtitle.url,
-              type: 'vtt',
-              style: {
-                color: '#fff',
-                textShadow: '0 1px 4px rgba(0,0,0,.9)',
-                fontSize: '15px',
-              },
-            }
-          : undefined,
         // 不能加 crossOrigin：R2 预签名直链不带 CORS 头，加了浏览器会直接拦掉视频请求
         moreVideoAttr: { playsInline: true },
-      })
+      }
+      if (type === 'm3u8') {
+        opts.customType = {
+          m3u8: async (video, src) => {
+            const Hls = (await import('hls.js')).default
+            if (Hls.isSupported()) {
+              const hls = new Hls({ maxBufferLength: 30 })
+              hls.loadSource(src)
+              hls.attachMedia(video)
+              video._hls = hls
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+              video.src = src // Safari 原生 HLS
+            }
+          },
+        }
+      }
+      if (subtitle) {
+        opts.subtitle = {
+          url: subtitle.url,
+          type: 'vtt',
+          style: {
+            color: '#fff',
+            textShadow: '0 1px 4px rgba(0,0,0,.9)',
+            fontSize: '15px',
+          },
+        }
+      }
+      art = new Artplayer(opts)
       artRef.current = art
+
+      // 出画面就撤掉加载遮罩（ready 在 HLS 首片出流时触发；playing 兜底）
+      art.on('ready', () => {
+        if (alive) setStatus('ready')
+      })
+      art.on('video:playing', () => {
+        if (alive) setStatus('ready')
+      })
+      // 播放出错给出可读信息，而不是停在转圈
+      art.on('video:error', () => {
+        if (alive) {
+          setStatus('failed')
+          setFailMsg('视频加载失败：文件可能不支持浏览器播放或直链已过期，请重试')
+        }
+      })
 
       // 恢复上次播放位置（直连格式用时间轴 seek；转码格式已通过 ss 起转）
       if (type !== 'm3u8') {
@@ -161,6 +178,14 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
         } catch {}
         savePos(f.bucket, f.path, ssRef.current + (art.currentTime || 0))
       })
+      } catch (e) {
+        // 播放器初始化异常也要可见，不能永远停在转圈
+        console.error('[VideoPlayer] init failed:', e)
+        if (alive) {
+          setStatus('failed')
+          setFailMsg('播放器初始化失败：' + (e?.message || e))
+        }
+      }
     })()
 
     return () => {
@@ -195,10 +220,8 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
 
   return (
     <div className="m-auto flex h-full w-full max-w-[1100px] items-center justify-center px-4 py-2">
-      <div
-        ref={boxRef}
-        className="relative h-full w-full overflow-hidden rounded-xl bg-black"
-      >
+      <div className="relative h-full w-full overflow-hidden rounded-xl bg-black">
+        <div ref={boxRef} className="h-full w-full" />
         {status !== 'ready' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-white/70">
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white/80" />
