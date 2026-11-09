@@ -169,3 +169,43 @@ pre.code-view code.hljs {
     transform: rotate(360deg);
   }
 }
+
+/* ---------- 全屏播放页 ---------- */
+/* 歌词区：上下渐隐 + 隐藏滚动条（拖拽仍可用） */
+.lyrics-scroll {
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+}
+.lyrics-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* 播放中的队列均衡器动画 */
+.eq i {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--color-accent);
+  animation: eq-bounce 0.9s ease-in-out infinite;
+}
+.eq i:nth-child(1) {
+  height: 60%;
+  animation-delay: 0s;
+}
+.eq i:nth-child(2) {
+  height: 100%;
+  animation-delay: 0.25s;
+}
+.eq i:nth-child(3) {
+  height: 45%;
+  animation-delay: 0.5s;
+}
+@keyframes eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}

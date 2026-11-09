@@ -12,6 +12,7 @@ import Accounts from './components/Accounts'
 import CreateBucket from './components/CreateBucket'
 import UploadPanel from './components/UploadPanel'
 import MiniPlayer from './components/MiniPlayer'
+import FullPlayer from './components/FullPlayer'
 import Toasts from './components/Toasts'
 
 export default function App() {
@@ -64,6 +65,7 @@ export default function App() {
       )}
       <UploadPanel />
       <MiniPlayer />
+      <FullPlayer />
       <Toasts />
     </div>
   )

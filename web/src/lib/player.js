@@ -89,6 +89,35 @@ async function reSignAndRetry(track) {
 }
 
 // ---------- 播放控制 ----------
+export const MODES = [
+  { value: 'order', icon: 'repeat', title: '顺序循环' },
+  { value: 'one', icon: 'repeat1', title: '单曲循环' },
+  { value: 'shuffle', icon: 'shuffle', title: '随机播放' },
+]
+
+export function openFullscreen() {
+  patchPlayer({ fullscreen: true })
+}
+
+export function closeFullscreen() {
+  patchPlayer({ fullscreen: false })
+}
+
+// 供歌词组件以 60fps 读取真实播放进度（不经过 zustand，避免全量重渲染）
+export function getAudio() {
+  ensureAudio()
+  return audio
+}
+
+// 点击队列列表中的某首直接切过去
+export function playIndex(i) {
+  const p = useStore.getState().player
+  if (i < 0 || i >= p.queue.length) return
+  patchPlayer({ index: i })
+  loadTrack(p.queue[i], true)
+  saveState()
+}
+
 function loadTrack(track, autoplay, resumeAt = 0) {
   audio.src = track.url
   audio.currentTime = resumeAt

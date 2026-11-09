@@ -238,6 +238,16 @@ const UI_PATHS = {
       <path d="M18.5 5.5a9 9 0 0 1 0 13" />
     </>
   ),
+  expand: <polyline points="6 15 12 9 18 15" />,
+  collapse: <polyline points="6 9 12 15 18 9" />,
+  queue: (
+    <>
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="18" x2="13" y2="18" />
+      <polygon points="17 14 22 17 17 20" fill="currentColor" stroke="none" />
+    </>
+  ),
 }
 
 export function UIcon({ name, size = 16, className = '' }) {

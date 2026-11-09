@@ -51,6 +51,7 @@ export const useStore = create((set) => ({
     duration: 0,
     currentTime: 0,
     visible: false,
+    fullscreen: false, // 全屏播放页（歌词/队列）
     restored: true, // 恢复的会话未开始播放（等用户手势）
   },
   patchPlayer: (patch) => set((s) => ({ player: { ...s.player, ...patch } })),
