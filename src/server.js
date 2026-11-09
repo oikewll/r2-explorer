@@ -26,6 +26,7 @@ import zlib from 'node:zlib'
 import fs from 'node:fs'
 import path from 'node:path'
 import { detectArchiveKind, getArchiveBuffer, listRar, list7z, listTar, extractRar, extract7z, extractTar } from './archives.js'
+import { registerWebDAV } from './webdav.js'
 
 // ---------- env ----------
 const {
@@ -1147,6 +1148,9 @@ app.get('/api/transcode/:id/:file', authGuard, (c) => {
   // HLS 分片（4s 一片）体积小，直接整读
   return c.body(fs.readFileSync(fp))
 })
+
+// ---------- WebDAV（/dav/，Basic 认证，密码 = 登录密码；仅 Node/Docker 版） ----------
+registerWebDAV(app, { AUTH_PASSWORD })
 
 serve({ fetch: app.fetch, port: Number(PORT) }, (info) => {
   console.log(`[r2-explorer] listening on http://localhost:${info.port}`)

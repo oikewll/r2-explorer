@@ -94,6 +94,24 @@ docker run -d --name r2-explorer -p 3000:3000 \
 
 挂载 `./data` 卷用于持久化界面里绑定的多账号配置（`data/accounts.json`）。
 
+## WebDAV（Docker/Node 版）
+
+自托管版内置 WebDAV 服务，挂载点 `/dav/`：根集合 = 当前激活账号的所有桶，`/dav/桶名/路径` 即文件。认证为 HTTP Basic：**用户名任意，密码 = 登录密码**（`AUTH_PASSWORD`）。
+
+```bash
+# rclone 挂载为本地磁盘
+rclone mount :webdav: --webdav-url=http://localhost:3000/dav/ --webdav-user=any \
+  --webdav-pass=$(rclone obscure 你的登录密码) /mnt/r2
+
+# rclone 直接读写
+rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscure 你的密码):桶名
+
+# macOS Finder：前往 → 连接服务器 → http://主机:3000/dav/
+# Windows 资源管理器：映射网络驱动器 → http://主机:3000/dav/
+```
+
+支持 OPTIONS / PROPFIND / GET / HEAD / PUT（流式直传，大文件不吃内存）/ DELETE / MKCOL / COPY / MOVE / LOCK / UNLOCK。注意：目录为 R2 前缀合成（空目录用零字节标记兜底）；桶本身不能通过 WebDAV 删除；Workers 版无此功能。
+
 ## API
 
 | 方法 | 路径 | 说明 |
