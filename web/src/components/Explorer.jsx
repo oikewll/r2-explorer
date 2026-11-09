@@ -108,7 +108,8 @@ export default function Explorer({ route }) {
     const q = search.trim().toLowerCase()
     const match = (n) => !q || n.toLowerCase().includes(q)
     const dirs = data.dirs.filter((d) => match(d.name))
-    let files = data.files.filter((f) => match(f.name))
+    // 每个文件统一带上 bucket，预览/播放等下游不再依赖调用方补参
+    let files = data.files.filter((f) => match(f.name)).map((f) => ({ ...f, bucket }))
     if (sort === 'size') files = [...files].sort((a, b) => b.size - a.size)
     else if (sort === 'time') files = [...files].sort((a, b) => new Date(b.modified) - new Date(a.modified))
     else {
@@ -194,9 +195,7 @@ export default function Explorer({ route }) {
   // 音频文件直接进播放器队列（路由切换不断播）；zip 内的音频仍走预览弹窗
   const openFile = (f) => {
     if (categoryOf(f.name) === 'audio') {
-      const audioFiles = items.files
-        .filter((x) => categoryOf(x.name) === 'audio')
-        .map((x) => ({ ...x, bucket }))
+      const audioFiles = items.files.filter((x) => categoryOf(x.name) === 'audio')
       playFromList(audioFiles, f)
     } else {
       setPreview({ mode: 'file', f })
