@@ -127,7 +127,8 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
               },
             }
           : undefined,
-        moreVideoAttr: { crossOrigin: 'anonymous', playsInline: true },
+        // 不能加 crossOrigin：R2 预签名直链不带 CORS 头，加了浏览器会直接拦掉视频请求
+        moreVideoAttr: { playsInline: true },
       })
       artRef.current = art
 
