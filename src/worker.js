@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { AwsClient } from 'aws4fetch'
-import INDEX_HTML from '../public/index.html'
 
 // ---------- format helpers ----------
 function formatSize(bytes) {
@@ -850,8 +849,8 @@ app.get('/api/info', authGuard, async (c) => {
   })
 })
 
-// frontend
-app.get('/', (c) => c.html(INDEX_HTML))
+// 前端静态页面由 Workers Static Assets 提供（wrangler.toml 的 [assets] 配置），
+// Worker 只处理 /api/*，不再内嵌 HTML
 
 // ---------- 预览：文本 / zip ----------
 const MIME = {
@@ -890,6 +889,9 @@ async function s3GetRange(c, bucket, key, start, end) {
   return res
 }
 
+// 能力探测：Workers 无法运行 ffmpeg，转码在线播放仅 Docker 自托管版支持
+app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: false }))
+
 // 文本预览代理（同源，避免 CDN CORS 问题）
 app.get('/api/text', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
@@ -906,6 +908,28 @@ app.get('/api/text', authGuard, async (c) => {
   return new Response(await res.text(), {
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
   })
+})
+
+// 对象内容同源代理（图片画布类操作需要同源，避免预签名/CDN 直链无 CORS 导致画布污染；Range 透传供 EXIF 局部拉取）
+app.get('/api/raw', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  const range = c.req.header('range')
+  const res = await c._r2.fetch(objUrl(c, bucket, key), {
+    headers: range ? { Range: range } : undefined,
+  })
+  if (res.status !== 200 && res.status !== 206) {
+    return c.json({ error: `GET failed: ${res.status}` }, res.status === 404 ? 404 : 500)
+  }
+  const h = new Headers()
+  for (const k of ['Content-Type', 'Content-Length', 'Content-Range', 'ETag']) {
+    const v = res.headers.get(k)
+    if (v) h.set(k, v)
+  }
+  h.set('Accept-Ranges', 'bytes')
+  h.set('Cache-Control', 'private, max-age=300')
+  return new Response(res.body, { status: 200, headers: h })
 })
 
 // 列出 zip（apk/ipa/jar 同为 zip 格式）内的文件：Range 读尾部 EOCD + 中央目录
@@ -928,7 +952,7 @@ app.get('/api/zip', authGuard, async (c) => {
   for (let i = buf.length - 22; i >= 0; i--) {
     if (u32(buf, i) === 0x06054b50) { eocd = i; break }
   }
-  if (eocd < 0) return c.json({ error: '不是标准的 ZIP 格式' }, 400)
+  if (eocd < 0) return c.json({ error: '不是标准的 ZIP 格式（rar/7z/tar.gz 预览仅自托管 Node/Docker 版支持）' }, 400)
   const count = u16(buf, eocd + 10)
   const cdSize = u32(buf, eocd + 12)
   const cdOffset = u32(buf, eocd + 16)

@@ -1,0 +1,341 @@
+@import "tailwindcss";
+
+/* 颜色走 CSS 变量，.dark 类整体覆盖（模式由 lib/theme.js 控制） */
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-card: var(--c-card);
+  --color-line: var(--c-line);
+  --color-ink: var(--c-ink);
+  --color-ink2: var(--c-ink2);
+  --color-accent: var(--c-accent);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-danger: var(--c-danger);
+  --color-danger-soft: var(--c-danger-soft);
+}
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+  --c-bg: #f5f6f8;
+  --c-card: #ffffff;
+  --c-line: #e7e9ee;
+  --c-ink: #17181c;
+  --c-ink2: #6d7480;
+  --c-accent: #0d9488;
+  --c-accent-soft: #e7f5f2;
+  --c-danger: #dc2626;
+  --c-danger-soft: #fee2e2;
+  --c-scroll: #cfd3da;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236d7480' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+
+.dark {
+  color-scheme: dark;
+  --c-bg: #101318;
+  --c-card: #181c23;
+  --c-line: #272c36;
+  --c-ink: #e6e8ee;
+  --c-ink2: #98a0ad;
+  --c-accent: #2aa99b;
+  --c-accent-soft: #14332f;
+  --c-danger: #f05252;
+  --c-danger-soft: #3d1e22;
+  --c-scroll: #343a46;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a0ad' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-bg text-ink antialiased;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* ---------- 组件基类 ---------- */
+.btn,
+.btn-primary,
+.btn-ghost,
+.btn-danger,
+.btn-plain {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] font-medium whitespace-nowrap select-none transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none;
+}
+.btn-primary {
+  @apply bg-accent px-3.5 py-2 text-[14px] text-white shadow-[0_1px_2px_rgba(13,148,136,.35)] hover:brightness-105 active:brightness-95 active:scale-[.98];
+}
+.btn-ghost {
+  @apply px-3 py-2 text-[14px] text-ink2 hover:bg-ink/[0.045] hover:text-ink active:bg-ink/[0.08];
+}
+.btn-danger {
+  @apply bg-danger px-3.5 py-2 text-[14px] text-white hover:brightness-105 active:brightness-95 active:scale-[.98];
+}
+.btn-plain {
+  @apply border border-line bg-card px-3.5 py-2 text-[14px] hover:border-ink2/40 hover:bg-bg active:bg-ink/[0.05];
+}
+.icon-btn {
+  @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-ink2 transition-colors duration-150 hover:bg-ink/[0.05] hover:text-ink active:bg-ink/[0.09];
+}
+.input {
+  @apply w-full rounded-[10px] border border-line bg-card px-3.5 py-2.5 text-[14px] text-ink outline-none transition placeholder:text-ink2/55 focus:border-accent focus:ring-[3px] focus:ring-accent/15;
+}
+.select {
+  @apply max-w-[170px] cursor-pointer appearance-none truncate rounded-[10px] border border-line bg-card py-2 pl-3 pr-8 text-[13px] font-medium text-ink outline-none transition focus:border-accent focus:ring-[3px] focus:ring-accent/15;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+.card {
+  @apply rounded-2xl border border-line bg-card shadow-[0_1px_3px_rgba(16,24,40,.05)];
+}
+.modal-overlay {
+  @apply fixed inset-0 z-50 flex bg-black/45 p-4 backdrop-blur-[2px] sm:items-center sm:justify-center;
+}
+.modal-panel {
+  @apply m-auto flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-2xl bg-card shadow-[0_20px_60px_rgba(0,0,0,.22)];
+}
+.modal-head {
+  @apply flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-3.5;
+}
+.modal-title {
+  @apply truncate text-[15px] font-semibold;
+}
+
+/* 透明图片预览的棋盘格底（查看器恒为深色，用深色棋盘） */
+.img-checker {
+  background-color: #1e222a;
+  background-image:
+    linear-gradient(45deg, #2a2e37 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2e37 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2e37 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2e37 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+/* checkbox 微调 */
+.row-chk {
+  @apply h-4 w-4 shrink-0 cursor-pointer appearance-none rounded-[5px] border border-ink2/40 bg-card transition checked:border-accent checked:bg-accent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* 滚动条 */
+@utility thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-scroll) transparent;
+  &::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--c-scroll);
+    border-radius: 99px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* 代码预览 */
+pre.code-view {
+  @apply thin-scroll overflow-auto bg-card p-4 text-[13px] leading-[1.6];
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  tab-size: 4;
+}
+
+/* Office 预览 */
+/* xlsx 表格（SheetJS sheet_to_html 输出） */
+.office-xlsx table {
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.office-xlsx td,
+.office-xlsx th {
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  padding: 3px 10px;
+  min-width: 44px;
+  max-width: 360px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* docx 文档：docx-preview 自带白底包装，这里微调内边距 */
+.office-host .docx-wrapper {
+  padding: 24px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+pre.code-view code.hljs {
+  background: transparent;
+  padding: 0;
+}
+/* 暗色下的语法高亮（github-dark 配色） */
+.dark pre.code-view {
+  @apply bg-[#12151b];
+}
+.dark .hljs {
+  color: #e6edf3;
+}
+.dark .hljs-comment,
+.dark .hljs-quote {
+  color: #8b949e;
+}
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal,
+.dark .hljs-doctag,
+.dark .hljs-formula {
+  color: #ff7b72;
+}
+.dark .hljs-string,
+.dark .hljs-regexp,
+.dark .hljs-addition,
+.dark .hljs-attribute,
+.dark .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+.dark .hljs-number,
+.dark .hljs-variable,
+.dark .hljs-template-variable,
+.dark .hljs-type,
+.dark .hljs-selector-class,
+.dark .hljs-selector-attr,
+.dark .hljs-selector-pseudo {
+  color: #79c0ff;
+}
+.dark .hljs-title,
+.dark .hljs-section,
+.dark .hljs-title.class_,
+.dark .hljs-title.function_ {
+  color: #d2a8ff;
+}
+.dark .hljs-built_in,
+.dark .hljs-symbol,
+.dark .hljs-bullet,
+.dark .hljs-attr {
+  color: #ffa657;
+}
+.dark .hljs-deletion {
+  color: #ffa198;
+  background: rgba(255, 129, 130, 0.15);
+}
+.dark .hljs-addition {
+  background: rgba(63, 185, 80, 0.15);
+}
+.dark .hljs-emphasis {
+  font-style: italic;
+}
+.dark .hljs-strong {
+  font-weight: 600;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.toast-item {
+  animation: toast-in 0.18s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  animation: pop-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+/* 播放器碟片 */
+.disc {
+  @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 border-bg shadow-[0_2px_8px_rgba(16,24,40,.12)];
+}
+@media (prefers-reduced-motion: no-preference) {
+  .disc-spinning {
+    animation: disc-spin 6s linear infinite;
+  }
+}
+@keyframes disc-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- 全屏播放页 ---------- */
+/* 歌词区：上下渐隐 + 隐藏滚动条（拖拽仍可用） */
+.lyrics-scroll {
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+}
+.lyrics-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* 播放中的队列均衡器动画 */
+.eq i {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--color-accent);
+  animation: eq-bounce 0.9s ease-in-out infinite;
+}
+.eq i:nth-child(1) {
+  height: 60%;
+  animation-delay: 0s;
+}
+.eq i:nth-child(2) {
+  height: 100%;
+  animation-delay: 0.25s;
+}
+.eq i:nth-child(3) {
+  height: 45%;
+  animation-delay: 0.5s;
+}
+@keyframes eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}

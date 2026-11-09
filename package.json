@@ -1,6 +1,6 @@
 {
   "name": "r2-explorer",
-  "version": "1.9.1",
+  "version": "2.0.0",
   "description": "Cloudflare R2 file explorer with simple auth",
   "license": "MIT",
   "author": "Hoanliu",
@@ -14,15 +14,19 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "dev:web": "npm --prefix web run dev",
+    "build:web": "npm --prefix web ci && npm --prefix web run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.750.0",
     "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "@hono/node-server": "^1.14.0",
+    "7z-wasm": "^1.2.0",
     "aws4fetch": "^1.0.20",
-    "hono": "^4.7.0"
+    "hono": "^4.7.0",
+    "node-unrar-js": "^2.0.2"
   },
   "engines": {
     "node": ">=20"

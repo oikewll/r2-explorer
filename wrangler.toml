@@ -2,11 +2,6 @@ name = "r2-explorer"
 main = "src/worker.js"
 compatibility_date = "2026-10-01"
 
-# 把 HTML 作为文本模块打包进 Worker
-rules = [
-  { type = "Text", globs = ["**/*.html"] }
-]
-
 # 自定义域（自动创建 DNS 记录 + 证书）。没有自定义域可整段删掉，
 # Workers 会自动分配 https://r2-explorer.<你的子域>.workers.dev
 routes = [
@@ -15,6 +10,12 @@ routes = [
 
 # 保留 workers.dev 备用入口
 workers_dev = true
+
+# 前端为 Vite + React 应用（web/），构建产物在 web/dist，
+# 由 Workers Static Assets 直接托管；Worker 只处理 /api/*
+[assets]
+directory = "./web/dist"
+not_found_handling = "single-page-application"
 
 [vars]
 R2_ACCOUNT_ID = "your_cloudflare_account_id"
