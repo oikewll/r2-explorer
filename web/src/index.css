@@ -24,8 +24,8 @@
   --c-line: #e7e9ee;
   --c-ink: #17181c;
   --c-ink2: #6d7480;
-  --c-accent: #4f6ef7;
-  --c-accent-soft: #eef1fe;
+  --c-accent: #0d9488;
+  --c-accent-soft: #e7f5f2;
   --c-danger: #dc2626;
   --c-danger-soft: #fee2e2;
   --c-scroll: #cfd3da;
@@ -39,8 +39,8 @@
   --c-line: #272c36;
   --c-ink: #e6e8ee;
   --c-ink2: #98a0ad;
-  --c-accent: #6b83f8;
-  --c-accent-soft: #242c4d;
+  --c-accent: #2aa99b;
+  --c-accent-soft: #14332f;
   --c-danger: #f05252;
   --c-danger-soft: #3d1e22;
   --c-scroll: #343a46;
@@ -71,7 +71,7 @@ body {
   @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] font-medium whitespace-nowrap select-none transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none;
 }
 .btn-primary {
-  @apply bg-accent px-3.5 py-2 text-[14px] text-white shadow-[0_1px_2px_rgba(79,110,247,.35)] hover:brightness-105 active:brightness-95 active:scale-[.98];
+  @apply bg-accent px-3.5 py-2 text-[14px] text-white shadow-[0_1px_2px_rgba(13,148,136,.35)] hover:brightness-105 active:brightness-95 active:scale-[.98];
 }
 .btn-ghost {
   @apply px-3 py-2 text-[14px] text-ink2 hover:bg-ink/[0.045] hover:text-ink active:bg-ink/[0.08];

@@ -106,7 +106,7 @@ const GLYPHS = {
 
 const ICON_COLORS = {
   folder: '#f7b955',
-  bucket: '#4f6ef7',
+  bucket: '#0d9488',
   image: '#8b5cf6',
   video: '#f43f5e',
   audio: '#14b8a6',
