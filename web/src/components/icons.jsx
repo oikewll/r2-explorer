@@ -186,6 +186,58 @@ const UI_PATHS = {
       <line x1="21" y1="12" x2="9" y2="12" />
     </>
   ),
+  play: <polygon points="7 4 20 12 7 20" fill="currentColor" stroke="none" />,
+  pause: (
+    <>
+      <rect x="6" y="4" width="4.5" height="16" rx="1" fill="currentColor" stroke="none" />
+      <rect x="13.5" y="4" width="4.5" height="16" rx="1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  prev: (
+    <>
+      <polygon points="19 20 9 12 19 4" fill="currentColor" stroke="none" />
+      <line x1="5" y1="19" x2="5" y2="5" />
+    </>
+  ),
+  next: (
+    <>
+      <polygon points="5 4 15 12 5 20" fill="currentColor" stroke="none" />
+      <line x1="19" y1="19" x2="19" y2="5" />
+    </>
+  ),
+  repeat: (
+    <>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </>
+  ),
+  repeat1: (
+    <>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+      <path d="M11 10h1v4" />
+    </>
+  ),
+  shuffle: (
+    <>
+      <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22" />
+      <path d="m18 2 4 4-4 4" />
+      <path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2" />
+      <path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8" />
+      <path d="m18 14 4 4-4 4" />
+    </>
+  ),
+  volume: (
+    <>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19" fill="currentColor" stroke="none" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+    </>
+  ),
 }
 
 export function UIcon({ name, size = 16, className = '' }) {

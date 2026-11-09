@@ -3,6 +3,7 @@ import { api, setUnauthorizedHandler } from './lib/api'
 import { useHashRoute, navigate } from './lib/hash'
 import { useStore } from './lib/store'
 import { loadAccountsAndBuckets } from './lib/loader'
+import { restorePlayer } from './lib/player'
 import Login from './components/Login'
 import Header from './components/Header'
 import Buckets from './components/Buckets'
@@ -10,6 +11,7 @@ import Explorer from './components/Explorer'
 import Accounts from './components/Accounts'
 import CreateBucket from './components/CreateBucket'
 import UploadPanel from './components/UploadPanel'
+import MiniPlayer from './components/MiniPlayer'
 import Toasts from './components/Toasts'
 
 export default function App() {
@@ -33,7 +35,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (authed) loadAccountsAndBuckets().catch(() => {})
+    if (authed) {
+      loadAccountsAndBuckets().catch(() => {})
+      restorePlayer() // 恢复上次播放状态（不自动播放，等用户点播放）
+    }
   }, [authed])
 
   if (!authed) return <Login onOk={() => setAuthed(true)} />
@@ -58,6 +63,7 @@ export default function App() {
         />
       )}
       <UploadPanel />
+      <MiniPlayer />
       <Toasts />
     </div>
   )

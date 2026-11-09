@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { fmtSize, fmtTime, iconType, copyText } from '../lib/format'
+import { fmtSize, fmtTime, iconType, categoryOf, copyText } from '../lib/format'
 import { navigate, buildHash } from '../lib/hash'
 import { useStore } from '../lib/store'
 import { startUpload } from '../lib/uploader'
+import { playFromList } from '../lib/player'
 import { FIcon, UIcon } from './icons'
 import Preview from './Preview'
 import Confirm from './Confirm'
@@ -60,6 +61,7 @@ const SORTS = [
 
 export default function Explorer({ route }) {
   const toast = useStore((s) => s.toast)
+  const playerVisible = useStore((s) => s.player.visible)
   const [data, setData] = useState(null) // { crumbs, dirs, files }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -189,6 +191,18 @@ export default function Explorer({ route }) {
     toast(ok ? '直链已复制' : '复制失败', ok ? 'info' : 'error')
   }
 
+  // 音频文件直接进播放器队列（路由切换不断播）；zip 内的音频仍走预览弹窗
+  const openFile = (f) => {
+    if (categoryOf(f.name) === 'audio') {
+      const audioFiles = items.files
+        .filter((x) => categoryOf(x.name) === 'audio')
+        .map((x) => ({ ...x, bucket }))
+      playFromList(audioFiles, f)
+    } else {
+      setPreview({ mode: 'file', f })
+    }
+  }
+
   if (loading && !data) {
     return <div className="py-24 text-center text-[14px] text-ink2">加载中…</div>
   }
@@ -291,7 +305,7 @@ export default function Explorer({ route }) {
                 selected={selected.has(f.path)}
                 anySelected={selected.size > 0}
                 onToggle={() => toggleSelect(f.path)}
-                onOpen={() => setPreview({ mode: 'file', f })}
+                onOpen={() => openFile(f)}
                 onCopy={() => copyLink(f)}
                 onRename={() => setRenameItem({ ...f, isDir: false })}
                 onDelete={() => askDelete([{ ...f, isDir: false }])}
@@ -313,7 +327,10 @@ export default function Explorer({ route }) {
 
       {/* 批量操作条 */}
       {selected.size > 0 && (
-        <div className="pop-in fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-ink py-2 pl-5 pr-2 text-white shadow-[0_10px_36px_rgba(0,0,0,.35)]">
+        <div
+          className="pop-in fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-ink py-2 pl-5 pr-2 text-white shadow-[0_10px_36px_rgba(0,0,0,.35)]"
+          style={{ bottom: playerVisible ? 92 : 20 }}
+        >
           <span className="text-[13px] font-medium">已选 {selected.size} 项</span>
           <span className="mx-1 h-4 w-px bg-white/20" />
           <button className="rounded-full px-3 py-1.5 text-[13px] hover:bg-white/10" onClick={toggleAll}>

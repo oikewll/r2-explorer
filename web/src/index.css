@@ -151,3 +151,21 @@ pre.code-view code.hljs {
 .pop-in {
   animation: pop-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
+
+/* 播放器碟片 */
+.disc {
+  @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 border-bg shadow-[0_2px_8px_rgba(16,24,40,.12)];
+}
+@media (prefers-reduced-motion: no-preference) {
+  .disc-spinning {
+    animation: disc-spin 6s linear infinite;
+  }
+}
+@keyframes disc-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

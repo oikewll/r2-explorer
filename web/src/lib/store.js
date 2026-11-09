@@ -41,4 +41,17 @@ export const useStore = create((set) => ({
     set((s) => ({ uploads: s.uploads.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
   clearFinishedUploads: () =>
     set((s) => ({ uploads: s.uploads.filter((t) => !['done', 'fail', 'cancelled'].includes(t.status)) })),
+
+  // 音乐播放器（AudioEngine 单例的状态；audio 元素在 lib/player.js 里管理）
+  player: {
+    queue: [], // [{ name, path, bucket, url, presigned }]
+    index: -1,
+    playing: false,
+    mode: 'order', // order 顺序循环 | one 单曲循环 | shuffle 随机
+    duration: 0,
+    currentTime: 0,
+    visible: false,
+    restored: true, // 恢复的会话未开始播放（等用户手势）
+  },
+  patchPlayer: (patch) => set((s) => ({ player: { ...s.player, ...patch } })),
 }))

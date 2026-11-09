@@ -61,6 +61,7 @@ export default function UploadPanel() {
   const open = useStore((s) => s.uploadPanelOpen)
   const setOpen = useStore((s) => s.setUploadPanelOpen)
   const clearFinished = useStore((s) => s.clearFinishedUploads)
+  const playerVisible = useStore((s) => s.player.visible)
 
   if (!uploads.length || !open) return null
   const done = uploads.filter((t) => t.status === 'done').length
@@ -68,7 +69,10 @@ export default function UploadPanel() {
   const allDone = done + fail + uploads.filter((t) => t.status === 'cancelled').length === uploads.length
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 w-[min(340px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-line bg-card shadow-[0_12px_40px_rgba(16,24,40,.18)]">
+    <div
+      className="fixed right-4 z-40 w-[min(340px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-line bg-card shadow-[0_12px_40px_rgba(16,24,40,.18)] max-sm:right-3"
+      style={{ bottom: playerVisible ? 92 : 16 }}
+    >
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
         <div className="text-[13px] font-semibold">
           {allDone ? `上传完成：${done} 成功${fail ? `，${fail} 失败` : ''}` : `上传中… ${done + fail}/${uploads.length}`}
