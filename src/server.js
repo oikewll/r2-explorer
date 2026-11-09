@@ -820,8 +820,8 @@ app.get('/api/info', authGuard, async (c) => {
   })
 })
 
-// static frontend (public/index.html serves at /)
-app.use('/*', serveStatic({ root: './public' }))
+// static frontend (Vite 构建产物 web/dist)
+app.use('/*', serveStatic({ root: './web/dist' }))
 
 // ---------- 预览：文本 / zip ----------
 const MIME = {

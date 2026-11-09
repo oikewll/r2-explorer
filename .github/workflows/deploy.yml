@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build frontend (Vite + React)
+        run: npm run build:web
+
       - name: Restore prod config
         # wrangler.prod.toml（真实域名/KV id）不进开源仓库，内容 base64 存在 secret 里，
         # 部署时还原为仓库变量 WRANGLER_CONFIG 指定的文件名

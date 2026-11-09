@@ -2,13 +2,13 @@
 
 基于 Cloudflare R2 的轻量文件管理器：绑定**多个 Cloudflare 账号**并随时切换、浏览账号下**所有 R2 存储桶**、查看文件大小/时间、一键复制 CDN 直链。
 
-- 后端：Node.js + [Hono](https://hono.dev)
-- 前端：单页原生 HTML/CSS/JS，hash 路由（`#/桶名/路径/`），适配手机与 PC
+- 后端：Node.js + [Hono](https://hono.dev)（API 不变，Workers 与 Docker 双部署）
+- 前端：[Vite](https://vite.dev) + [React](https://react.dev) + [Tailwind CSS v4](https://tailwindcss.com) + zustand，hash 路由（`#/桶名/路径/`），适配手机与 PC
 - 鉴权：密码登录，HMAC 签名 HttpOnly Cookie，30 天有效
 - 多账号：界面里绑定/编辑/解绑多个 R2 账号，顶栏一键切换，绑定前自动验证凭证
 - 新建桶：首页（桶总览）一键新建存储桶，无需去 Cloudflare 控制台
 - 直链策略：各账号的 `CDN 映射` 里配置了自定义域的桶用 CDN 链接；未配置的桶自动生成 **7 天预签名直链**
-- 部署：Cloudflare Workers（推荐）或 Docker 自托管
+- 部署：Cloudflare Workers（推荐，静态资产托管）或 Docker 自托管
 
 ## 多账号管理
 
@@ -30,7 +30,16 @@
 
 ## Cloudflare Workers 部署（推荐）
 
+前端（`web/`）构建产物在 `web/dist`，通过 **Workers Static Assets** 托管（`wrangler.toml` 的 `[assets]` 配置），Worker 只处理 `/api/*`。**如果你使用自定义 `wrangler.prod.toml`，必须包含同样的 `[assets]` 段**：
+
+```toml
+[assets]
+directory = "./web/dist"
+not_found_handling = "single-page-application"
+```
+
 ```bash
+npm run build:web       # 先构建前端（CI 也会自动构建）
 wrangler deploy
 wrangler secret put AUTH_PASSWORD          # 登录密码
 wrangler secret put R2_ACCESS_KEY_ID       # R2 API Token 的密钥
@@ -41,7 +50,7 @@ wrangler secret put R2_SECRET_ACCESS_KEY
 
 ## CI/CD（GitHub Actions）
 
-打 `v*` tag 推送即自动部署 Worker，成功/失败都会推 Telegram 通知：
+打 `v*` tag 推送即自动部署 Worker（CI 会先构建前端再部署），成功/失败都会推 Telegram 通知：
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
@@ -64,16 +73,19 @@ git tag v1.0.0 && git push origin v1.0.0
 
 ## 本地开发
 
+后端（Node）与前端（Vite dev server）两个进程，前端已配置 `/api` 代理：
+
 ```bash
 cp .env.example .env   # 填好 R2 凭证与 AUTH_PASSWORD
 npm install
-npm run dev            # http://localhost:3000
+npm run dev            # 后端 http://localhost:3000
+npm run dev:web        # 前端 http://localhost:5173（开发时访问这个）
 ```
 
 ## Docker 部署
 
 ```bash
-docker build -t r2-explorer .
+docker build -t r2-explorer .    # 多段构建：先构建前端，再打运行镜像
 
 docker run -d --name r2-explorer -p 3000:3000 \
   -v ./data:/app/data \

@@ -15,7 +15,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "dev:web": "npm --prefix web run dev",
+    "build:web": "npm --prefix web ci && npm --prefix web run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.750.0",

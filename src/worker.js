@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { AwsClient } from 'aws4fetch'
-import INDEX_HTML from '../public/index.html'
 
 // ---------- format helpers ----------
 function formatSize(bytes) {
@@ -850,8 +849,8 @@ app.get('/api/info', authGuard, async (c) => {
   })
 })
 
-// frontend
-app.get('/', (c) => c.html(INDEX_HTML))
+// 前端静态页面由 Workers Static Assets 提供（wrangler.toml 的 [assets] 配置），
+// Worker 只处理 /api/*，不再内嵌 HTML
 
 // ---------- 预览：文本 / zip ----------
 const MIME = {

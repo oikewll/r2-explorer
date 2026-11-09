@@ -1,3 +1,10 @@
+FROM node:22-alpine AS web-build
+WORKDIR /build
+COPY web/package.json web/package-lock.json* ./web/
+RUN cd web && npm ci
+COPY web ./web
+RUN cd web && npm run build
+
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
@@ -8,6 +15,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY src ./src
-COPY public ./public
+COPY --from=web-build /build/web/dist ./web/dist
 EXPOSE 3000
 CMD ["node", "src/server.js"]
