@@ -13,3 +13,5 @@ wrangler.prod.toml
 
 # 项目记忆
 .workbuddy/
+pnpm-lock.yaml
+pnpm-workspace.yaml
