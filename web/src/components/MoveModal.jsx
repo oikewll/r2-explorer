@@ -103,7 +103,7 @@ export default function MoveModal({ bucket, items, currentPrefix, onClose, onDon
                 <span className="font-semibold">{c.name}</span>
               ) : (
                 <button
-                  className="rounded-md px-1 py-0.5 text-ink2 hover:bg-black/[0.05] hover:text-ink"
+                  className="rounded-md px-1 py-0.5 text-ink2 hover:bg-ink/[0.05] hover:text-ink"
                   onClick={() => setPrefix(c.path)}
                 >
                   {c.name}

@@ -4,6 +4,7 @@ import { fmtSize, fmtTime, fmtNum, categoryOf, iconType } from '../lib/format'
 import { FIcon, UIcon } from './icons'
 // hljs 主题样式（重构时从 CDN 内联丢了，没它语法 token 不着色）
 import 'highlight.js/styles/github.css'
+import VideoPlayer from './VideoPlayer'
 
 const PLAIN_EXT = new Set(['txt', 'log', 'csv'])
 const LANG_BY_EXT = {
@@ -242,7 +243,10 @@ export default function Preview({ state, onClose, onBack, setPreview }) {
           {cat === 'image' && (
             <img src={mediaUrl} alt="" className="m-auto max-h-full max-w-full object-contain p-4" />
           )}
-          {cat === 'video' && (
+          {cat === 'video' && mode === 'file' && (
+            <VideoPlayer f={state.f} siblings={state.siblings} setPreview={setPreview} />
+          )}
+          {cat === 'video' && mode === 'zipEntry' && (
             <video
               src={mediaUrl}
               controls

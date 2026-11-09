@@ -20,6 +20,8 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import crypto from 'node:crypto'
+import { spawn, spawnSync } from 'node:child_process'
+import os from 'node:os'
 import zlib from 'node:zlib'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -961,6 +963,114 @@ app.get('/api/zip-entry', authGuard, async (c) => {
     'Content-Disposition': contentDisposition(name, download),
     'Cache-Control': 'no-store',
   })
+})
+
+// ---------- 视频转码（仅 Node/Docker 版支持；Workers 无法运行 ffmpeg） ----------
+// mkv/avi 等浏览器不能直放的格式 → ffmpeg 转 HLS，边转边播（event 模式）
+let ffmpegOk = null
+function hasFFmpeg() {
+  if (ffmpegOk !== null) return ffmpegOk
+  try {
+    ffmpegOk = spawnSync('ffmpeg', ['-version']).status === 0
+  } catch {
+    ffmpegOk = false
+  }
+  if (!ffmpegOk) console.warn('[warn] 未检测到 ffmpeg，mkv/avi 等格式将无法在线播放')
+  return ffmpegOk
+}
+
+const TRANSCODE_IDLE_MS = 15 * 60 * 1000
+const TRANSCODE_MAX = 2 // 并发上限，超出杀最旧的
+const transcodes = new Map() // id -> { proc, dir, bucket, key, ss, lastTouch, failed }
+
+function killTranscode(id) {
+  const s = transcodes.get(id)
+  if (!s) return
+  try {
+    s.proc.kill('SIGKILL')
+  } catch {}
+  try {
+    fs.rmSync(s.dir, { recursive: true, force: true })
+  } catch {}
+  transcodes.delete(id)
+}
+
+function transcodeGC() {
+  const now = Date.now()
+  for (const [id, s] of transcodes) {
+    if (now - s.lastTouch > TRANSCODE_IDLE_MS) killTranscode(id)
+  }
+  while (transcodes.size > TRANSCODE_MAX) {
+    const oldest = [...transcodes.entries()].sort((a, b) => a[1].lastTouch - b[1].lastTouch)[0]
+    killTranscode(oldest[0])
+  }
+}
+setInterval(transcodeGC, 60 * 1000).unref?.()
+
+app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: hasFFmpeg() }))
+
+app.post('/api/transcode/start', authGuard, async (c) => {
+  if (!hasFFmpeg()) return c.json({ error: '服务器未安装 ffmpeg，无法转码在线播放' }, 501)
+  const body = await c.req.json().catch(() => ({}))
+  const { bucket, key } = body
+  const ss = Math.max(0, Number(body.ss) || 0)
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  // 相同文件 + 相同起点：复用进行中的会话
+  for (const [id, s] of transcodes) {
+    if (s.bucket === bucket && s.key === key && s.ss === ss) {
+      s.lastTouch = Date.now()
+      return c.json({ id, ss })
+    }
+  }
+  const { url } = await fileUrl(c, bucket, key)
+  const id = crypto.randomUUID()
+  const dir = path.join(os.tmpdir(), 'r2x-transcode', id)
+  fs.mkdirSync(dir, { recursive: true })
+  // ss 作为 ffmpeg 输入的快速 seek：转码时间线从 ss 开始，前端播放位置 = ss + 播放器时间
+  const args = [
+    '-hide_banner', '-loglevel', 'error', '-nostdin',
+    ...(ss > 0 ? ['-ss', String(ss)] : []),
+    '-i', url,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
+    '-f', 'hls', '-hls_time', '4', '-hls_playlist_type', 'event', '-hls_flags', 'independent_segments',
+    '-hls_list_size', '0', '-hls_segment_filename', path.join(dir, 'seg%05d.ts'),
+    path.join(dir, 'index.m3u8'),
+  ]
+  const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] })
+  let errMsg = ''
+  proc.stderr.on('data', (d) => {
+    errMsg = (errMsg + d).slice(-500)
+  })
+  proc.on('error', () => killTranscode(id))
+  proc.on('close', (code) => {
+    const s = transcodes.get(id)
+    if (s && code !== 0) s.failed = (errMsg || `ffmpeg exited ${code}`).trim()
+  })
+  transcodes.set(id, { proc, dir, bucket, key, ss, lastTouch: Date.now() })
+  transcodeGC()
+  return c.json({ id, ss })
+})
+
+app.post('/api/transcode/stop', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  if (body.id) killTranscode(body.id)
+  return c.json({ ok: true })
+})
+
+app.get('/api/transcode/:id/:file', authGuard, (c) => {
+  const { id, file } = c.req.param()
+  const s = transcodes.get(id)
+  if (!s) return c.json({ error: 'transcode session not found' }, 404)
+  s.lastTouch = Date.now()
+  if (!/^[\w][\w.-]*$/.test(file)) return c.json({ error: 'bad file' }, 400)
+  if (file === 'index.m3u8' && s.failed) return c.json({ error: '转码失败：' + s.failed }, 500)
+  const fp = path.join(s.dir, file)
+  if (!fs.existsSync(fp)) return c.json({ error: 'segment not ready' }, 404)
+  c.header('Content-Type', file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t')
+  c.header('Cache-Control', 'no-store')
+  // HLS 分片（4s 一片）体积小，直接整读
+  return c.body(fs.readFileSync(fp))
 })
 
 serve({ fetch: app.fetch, port: Number(PORT) }, (info) => {

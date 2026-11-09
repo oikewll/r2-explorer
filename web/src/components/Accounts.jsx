@@ -165,7 +165,7 @@ export default function Accounts({ onClose }) {
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{a.name}</span>
                   {a.builtin && (
-                    <span className="rounded-md bg-black/[0.06] px-1.5 py-px text-[11px] text-ink2">内置</span>
+                    <span className="rounded-md bg-ink/[0.06] px-1.5 py-px text-[11px] text-ink2">内置</span>
                   )}
                   {a.id === activeId && (
                     <span className="rounded-md bg-accent px-1.5 py-px text-[11px] font-medium text-white">使用中</span>

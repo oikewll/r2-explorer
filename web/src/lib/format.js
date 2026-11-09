@@ -33,7 +33,9 @@ export function iconType(name) {
 }
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'])
-const VIDEO_EXT = new Set(['mp4', 'webm', 'm4v', 'mov'])
+const VIDEO_EXT = new Set(['mp4', 'webm', 'm4v', 'mov', 'mkv', 'avi', 'flv', 'wmv', 'mpg', 'mpeg', '3gp', 'ogv', 'm2ts', 'vob'])
+// 浏览器 <video> 能直放的容器
+const NATIVE_VIDEO_EXT = new Set(['mp4', 'webm', 'm4v', 'mov'])
 const AUDIO_EXT = new Set(['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'])
 const TEXT_EXT = new Set(['txt', 'json', 'meta', 'xml', 'yml', 'yaml', 'js', 'ts', 'mjs', 'cts', 'css', 'html', 'htm', 'md', 'csv', 'log', 'ini', 'cfg', 'conf', 'sh', 'lua', 'plist', 'properties', 'version', 'py', 'go', 'rs', 'java', 'c', 'h', 'cpp', 'hpp', 'cs', 'php', 'rb', 'sql', 'toml', 'swift', 'kt', 'diff', 'patch', 'env'])
 const ZIP_EXT = new Set(['zip', 'apk', 'ipa', 'jar', 'xapk', 'epub'])
@@ -47,6 +49,10 @@ export function categoryOf(name) {
   if (TEXT_EXT.has(ext)) return 'text'
   if (ZIP_EXT.has(ext)) return 'zip'
   return null
+}
+
+export function isNativeVideo(name) {
+  return NATIVE_VIDEO_EXT.has((name.split('.').pop() || '').toLowerCase())
 }
 
 export async function copyText(text) {

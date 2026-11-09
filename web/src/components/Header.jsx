@@ -1,8 +1,14 @@
+import { useState } from 'react'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/hash'
 import { api } from '../lib/api'
 import { loadAccountsAndBuckets } from '../lib/loader'
+import { getTheme, setTheme } from '../lib/theme'
 import { FIcon, UIcon } from './icons'
+
+const THEME_ORDER = ['light', 'dark', 'auto']
+const THEME_LABEL = { light: '亮色模式', dark: '暗色模式', auto: '自动模式（跟随系统）' }
+const THEME_ICON = { light: 'sun', dark: 'moon', auto: 'monitor' }
 
 export default function Header({ route }) {
   const accounts = useStore((s) => s.accounts)
@@ -10,6 +16,13 @@ export default function Header({ route }) {
   const buckets = useStore((s) => s.buckets)
   const setAccountsOpen = useStore((s) => s.setAccountsOpen)
   const toast = useStore((s) => s.toast)
+  const [theme, setThemeState] = useState(getTheme)
+
+  const cycleTheme = () => {
+    const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]
+    setTheme(next)
+    setThemeState(next)
+  }
 
   const changeAccount = async (id) => {
     try {
@@ -61,6 +74,13 @@ export default function Header({ route }) {
               ))}
             </select>
           )}
+          <button
+            className="icon-btn"
+            title={`主题：${THEME_LABEL[theme]}（点击切换）`}
+            onClick={cycleTheme}
+          >
+            <UIcon name={THEME_ICON[theme]} size={18} />
+          </button>
           <button className="icon-btn" title="账号管理" onClick={() => setAccountsOpen(true)}>
             <UIcon name="gear" size={18} />
           </button>

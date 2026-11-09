@@ -9,7 +9,7 @@ function TaskRow({ task }) {
   const done = task.status === 'done'
   const cancelled = task.status === 'cancelled'
   return (
-    <div className={`rounded-xl px-3 py-2.5 ${failed ? 'bg-danger-soft' : cancelled ? 'bg-black/[0.035]' : 'bg-bg'}`}>
+    <div className={`rounded-xl px-3 py-2.5 ${failed ? 'bg-danger-soft' : cancelled ? 'bg-ink/[0.035]' : 'bg-bg'}`}>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1 truncate text-[13px] font-medium">
           {task.name}
@@ -34,7 +34,7 @@ function TaskRow({ task }) {
         )}
       </div>
       <div className="mt-1.5 flex items-center gap-2">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/[0.07]">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ink/[0.07]">
           <div
             className={`h-full rounded-full transition-[width] duration-200 ${
               failed ? 'bg-danger' : done ? 'bg-emerald-500' : 'bg-accent'

@@ -23,7 +23,7 @@ function Crumbs({ crumbs, bucket }) {
               <span className="truncate font-semibold">{c.name}</span>
             ) : (
               <button
-                className="shrink-0 max-w-[160px] truncate rounded-md px-1.5 py-0.5 text-ink2 transition hover:bg-black/[0.05] hover:text-ink"
+                className="shrink-0 max-w-[160px] truncate rounded-md px-1.5 py-0.5 text-ink2 transition hover:bg-ink/[0.05] hover:text-ink"
                 onClick={() => navigate(bucket, c.path)}
               >
                 {c.name}
@@ -41,7 +41,7 @@ function RowAction({ title, icon, onClick, danger }) {
     <button
       title={title}
       className={`rounded-lg p-1.5 transition-colors ${
-        danger ? 'text-ink2 hover:bg-danger-soft hover:text-danger' : 'text-ink2 hover:bg-black/[0.06] hover:text-ink'
+        danger ? 'text-ink2 hover:bg-danger-soft hover:text-danger' : 'text-ink2 hover:bg-ink/[0.06] hover:text-ink'
       }`}
       onClick={(e) => {
         e.stopPropagation()
@@ -192,11 +192,14 @@ export default function Explorer({ route }) {
     toast(ok ? '直链已复制' : '复制失败', ok ? 'info' : 'error')
   }
 
-  // 音频文件直接进播放器队列（路由切换不断播）；zip 内的音频仍走预览弹窗
+  // 音频文件直接进播放器队列（路由切换不断播）；视频带兄弟列表用于连续剧连播；zip 内的媒体仍走预览弹窗
   const openFile = (f) => {
-    if (categoryOf(f.name) === 'audio') {
+    const cat = categoryOf(f.name)
+    if (cat === 'audio') {
       const audioFiles = items.files.filter((x) => categoryOf(x.name) === 'audio')
       playFromList(audioFiles, f)
+    } else if (cat === 'video') {
+      setPreview({ mode: 'file', f, siblings: items.files.filter((x) => categoryOf(x.name) === 'video') })
     } else {
       setPreview({ mode: 'file', f })
     }
@@ -327,7 +330,7 @@ export default function Explorer({ route }) {
       {/* 批量操作条 */}
       {selected.size > 0 && (
         <div
-          className="pop-in fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-ink py-2 pl-5 pr-2 text-white shadow-[0_10px_36px_rgba(0,0,0,.35)]"
+          className="pop-in fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#1e222b] py-2 pl-5 pr-2 text-white shadow-[0_10px_36px_rgba(0,0,0,.35)]"
           style={{ bottom: playerVisible ? 92 : 20 }}
         >
           <span className="text-[13px] font-medium">已选 {selected.size} 项</span>

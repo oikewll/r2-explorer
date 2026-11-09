@@ -162,7 +162,7 @@ export default function FullPlayer() {
             <div className="flex gap-1 rounded-full bg-white/[0.07] p-1 text-[12.5px] font-medium">
               <button
                 className={`rounded-full px-3.5 py-1 transition ${
-                  view === 'lyrics' ? 'bg-white text-ink' : 'text-white/55 hover:text-white'
+                  view === 'lyrics' ? 'bg-white text-[#17181c]' : 'text-white/55 hover:text-white'
                 }`}
                 onClick={() => setView('lyrics')}
               >
@@ -170,7 +170,7 @@ export default function FullPlayer() {
               </button>
               <button
                 className={`rounded-full px-3.5 py-1 transition ${
-                  view === 'queue' ? 'bg-white text-ink' : 'text-white/55 hover:text-white'
+                  view === 'queue' ? 'bg-white text-[#17181c]' : 'text-white/55 hover:text-white'
                 }`}
                 onClick={() => setView('queue')}
               >
@@ -221,7 +221,7 @@ export default function FullPlayer() {
             <UIcon name="prev" size={22} />
           </button>
           <button
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-ink shadow-[0_8px_28px_rgba(255,255,255,.18)] transition hover:brightness-95 active:scale-95 max-sm:h-14 max-sm:w-14"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-[#17181c] shadow-[0_8px_28px_rgba(255,255,255,.18)] transition hover:brightness-95 active:scale-95 max-sm:h-14 max-sm:w-14"
             onClick={togglePlay}
             title={player.playing ? '暂停' : '播放'}
           >
