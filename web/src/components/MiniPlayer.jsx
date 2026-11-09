@@ -23,14 +23,11 @@ export default function MiniPlayer() {
 
   return (
     <div className="pop-in fixed bottom-3 left-1/2 z-40 w-[min(680px,calc(100vw-24px))] -translate-x-1/2 max-sm:bottom-2">
-      <div className="relative overflow-hidden rounded-2xl border border-line bg-card shadow-[0_10px_36px_rgba(16,24,40,.16)]">
-        {/* 进度条（贴卡片顶部，点击/拖动跳转） */}
-        <SeekBar duration={player.duration} currentTime={player.currentTime} className="pt-1.5" barClass="h-1" />
-
-        <div className="flex items-center gap-3 px-3.5 pb-2.5 pt-1">
+      <div className="relative overflow-hidden rounded-2xl border border-line bg-card/95 shadow-[0_8px_32px_rgba(16,24,40,.16)] backdrop-blur-md">
+        <div className="flex items-center gap-3 px-3.5 pb-3.5 pt-2.5">
           {/* 碟片（点击进全屏） */}
           <button
-            className={`disc transition-transform hover:scale-105 ${player.playing ? 'disc-spinning' : ''}`}
+            className={`disc transition-transform duration-200 hover:scale-105 ${player.playing ? 'disc-spinning' : ''}`}
             onClick={openFullscreen}
             title="打开播放页"
           >
@@ -82,6 +79,15 @@ export default function MiniPlayer() {
             </button>
           </div>
         </div>
+
+        {/* 进度条：贴卡片底边，hover 显示圆点，可点击/拖动 */}
+        <SeekBar
+          duration={player.duration}
+          currentTime={player.currentTime}
+          align="bottom"
+          className="absolute inset-x-3 bottom-0 text-accent"
+          barClass="h-[3px] group-hover/bar:h-[5px]"
+        />
       </div>
     </div>
   )
