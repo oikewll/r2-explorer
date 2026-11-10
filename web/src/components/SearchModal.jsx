@@ -91,7 +91,7 @@ export default function SearchModal({ bucket, onClose }) {
           <UIcon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink2" />
           <input
             ref={inputRef}
-            className="input h-10 pl-9"
+            className="input h-10 pl-9!"
             placeholder={`在「${bucket}」中搜索文件名（至少 2 个字符）…`}
             value={q}
             onChange={(e) => setQ(e.target.value)}
