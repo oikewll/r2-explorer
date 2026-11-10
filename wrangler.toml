@@ -21,6 +21,8 @@ not_found_handling = "single-page-application"
 R2_ACCOUNT_ID = "your_cloudflare_account_id"
 # 桶名 -> CDN 自定义域；没配置的桶自动用 7 天预签名直链
 R2_CDN_MAP = '{"my-bucket":"https://cdn.example.com"}'
+# 离线下载单文件体积上限（MB，字符串形式）；默认 100，免费版建议 ≤200
+# OFFLINE_MAX_SIZE_MB = "100"
 
 # R2 密钥走 Worker secrets：R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
 # AUTH_PASSWORD 也是 secret

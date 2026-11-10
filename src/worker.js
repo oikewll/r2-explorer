@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
-import { AwsClient } from 'aws4fetch'
+import { AwsClient, AwsV4Signer } from 'aws4fetch'
 
 // ---------- format helpers ----------
 function formatSize(bytes) {
@@ -1049,6 +1049,21 @@ async function dlRun(env, task) {
       },
     })
 
+    // Content-Length 是 fetch 的 forbidden header（Request 构造时会剥离），
+    // 流式 body 必须用 FixedLengthStream 让 workerd 自动补长度声明，否则 R2 返回 411
+    const bodyStream = dl.body.pipeThrough(counter)
+    let body
+    if (cl === 0) {
+      body = new Uint8Array(0)
+    } else if (typeof FixedLengthStream !== 'undefined') {
+      const fixed = new FixedLengthStream(cl)
+      bodyStream.pipeTo(fixed.writable).catch(() => {}) // 错误经 readable 传给 PUT
+      body = fixed.readable
+    } else {
+      // 兜底（非 Workers 环境）：内存缓冲
+      body = Buffer.from(await new Response(bodyStream).arrayBuffer())
+    }
+
     // 进度节流写 KV（每写 = get 校验 + put，2 个子请求）；速率按采样差值计算
     let writes = 0
     let lastTick = Date.now()
@@ -1069,14 +1084,26 @@ async function dlRun(env, task) {
 
     let res
     try {
-      res = await client.fetch(url, {
+      // 注意：不能用 aws4fetch 的 client.fetch() —— 它内部 new Request() 会把
+      // FixedLengthStream 的长度声明剥掉（Content-Length 是 forbidden header），
+      // 导致 R2 返回 411。用底层 AwsV4Signer 签名后直接 fetch，
+      // workerd 对 FixedLengthStream 的 readable 会自动补 Content-Length。
+      // 流 body 必须显式声明 UNSIGNED-PAYLOAD（signer 不会真算流的 hash，CPU 友好）。
+      const signer = new AwsV4Signer({
+        url,
         method: 'PUT',
         headers: {
           'Content-Type': ctype && ctype !== 'application/octet-stream' ? ctype : mimeFor(task.key),
-          'Content-Length': String(cl),
+          'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD',
         },
-        body: downloaded === 0 && cl === 0 ? new Uint8Array(0) : dl.body.pipeThrough(counter),
+        body,
+        accessKeyId: acc.accessKeyId,
+        secretAccessKey: acc.secretAccessKey,
+        service: 's3',
+        region: 'auto',
       })
+      const { headers } = await signer.sign()
+      res = await fetch(url, { method: 'PUT', headers, body })
     } finally {
       clearInterval(timer)
     }
