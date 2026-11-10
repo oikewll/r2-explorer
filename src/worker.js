@@ -889,8 +889,8 @@ async function s3GetRange(c, bucket, key, start, end) {
   return res
 }
 
-// 能力探测：Workers 无法运行 ffmpeg，转码在线播放仅 Docker 自托管版支持
-app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: false }))
+// 能力探测：Workers 无法运行 ffmpeg/后台下载，转码与离线下载仅 Docker 自托管版支持
+app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: false, offlineDownload: false }))
 
 // 文本预览代理（同源，避免 CDN CORS 问题）
 app.get('/api/text', authGuard, async (c) => {

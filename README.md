@@ -94,6 +94,28 @@ docker run -d --name r2-explorer -p 3000:3000 \
 
 挂载 `./data` 卷用于持久化界面里绑定的多账号配置（`data/accounts.json`）。
 
+## WebDAV（Docker/Node 版）
+
+自托管版内置 WebDAV 服务，挂载点 `/dav/`：根集合 = 当前激活账号的所有桶，`/dav/桶名/路径` 即文件。认证为 HTTP Basic：**用户名任意，密码 = 登录密码**（`AUTH_PASSWORD`）。
+
+```bash
+# rclone 挂载为本地磁盘
+rclone mount :webdav: --webdav-url=http://localhost:3000/dav/ --webdav-user=any \
+  --webdav-pass=$(rclone obscure 你的登录密码) /mnt/r2
+
+# rclone 直接读写
+rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscure 你的密码):桶名
+
+# macOS Finder：前往 → 连接服务器 → http://主机:3000/dav/
+# Windows 资源管理器：映射网络驱动器 → http://主机:3000/dav/
+```
+
+支持 OPTIONS / PROPFIND / GET / HEAD / PUT（流式直传，大文件不吃内存）/ DELETE / MKCOL / COPY / MOVE / LOCK / UNLOCK。注意：目录为 R2 前缀合成（空目录用零字节标记兜底）；桶本身不能通过 WebDAV 删除；Workers 版无此功能。
+
+## 离线下载（Docker/Node 版）
+
+文件列表工具栏的「离线下载」：粘贴 http/https 直链，服务器在后台流式下载并**分块直传 R2（不落盘）**，支持 GB 级大文件。链接粘贴后自动探测文件名与大小（优先读 Content-Disposition），可手动改名。任务并发 2 个，超出排队；任务列表实时显示进度与速率，失败可重试，服务重启后未完成任务标记失败可手动重试。Workers 版无此功能。
+
 ## API
 
 | 方法 | 路径 | 说明 |

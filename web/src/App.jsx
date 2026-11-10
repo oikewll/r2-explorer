@@ -4,6 +4,7 @@ import { useHashRoute, navigate } from './lib/hash'
 import { useStore } from './lib/store'
 import { loadAccountsAndBuckets } from './lib/loader'
 import { restorePlayer } from './lib/player'
+import { startDownloadPolling, stopDownloadPolling } from './lib/downloads'
 import Login from './components/Login'
 import Header from './components/Header'
 import Buckets from './components/Buckets'
@@ -11,6 +12,7 @@ import Explorer from './components/Explorer'
 import Accounts from './components/Accounts'
 import CreateBucket from './components/CreateBucket'
 import UploadPanel from './components/UploadPanel'
+import DownloadModal from './components/DownloadModal'
 import MiniPlayer from './components/MiniPlayer'
 import FullPlayer from './components/FullPlayer'
 import Toasts from './components/Toasts'
@@ -22,6 +24,8 @@ export default function App() {
   const setAccountsOpen = useStore((s) => s.setAccountsOpen)
   const createBucketOpen = useStore((s) => s.createBucketOpen)
   const setCreateBucketOpen = useStore((s) => s.setCreateBucketOpen)
+  const downloadModalOpen = useStore((s) => s.downloadModalOpen)
+  const setDownloadModalOpen = useStore((s) => s.setDownloadModalOpen)
   const route = useHashRoute()
 
   useEffect(() => {
@@ -29,16 +33,19 @@ export default function App() {
       setAuthed(false)
       setAccountsOpen(false)
       setCreateBucketOpen(false)
+      stopDownloadPolling()
     })
     api('/api/me')
       .then(() => setAuthed(true))
       .catch(() => setAuthed(false))
+    return () => stopDownloadPolling()
   }, [])
 
   useEffect(() => {
     if (authed) {
       loadAccountsAndBuckets().catch(() => {})
       restorePlayer() // 恢复上次播放状态（不自动播放，等用户点播放）
+      startDownloadPolling()
     }
   }, [authed])
 
@@ -64,6 +71,7 @@ export default function App() {
         />
       )}
       <UploadPanel />
+      {downloadModalOpen && <DownloadModal onClose={() => setDownloadModalOpen(false)} />}
       <MiniPlayer />
       <FullPlayer />
       <Toasts />
