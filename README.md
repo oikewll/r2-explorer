@@ -96,6 +96,8 @@ docker run -d --name r2-explorer -p 3000:3000 \
 
 ## WebDAV（Docker/Node 版）
 
+> 详细的客户端配置与常见问题见 [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md)。
+
 自托管版内置 WebDAV 服务，挂载点 `/dav/`：根集合 = 当前激活账号的所有桶，`/dav/桶名/路径` 即文件。认证为 HTTP Basic：**用户名任意，密码 = 登录密码**（`AUTH_PASSWORD`）。
 
 ```bash
@@ -114,7 +116,7 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 
 ## 离线下载（Docker/Node 版）
 
-文件列表工具栏的「离线下载」：粘贴 http/https 直链，服务器在后台流式下载并**分块直传 R2（不落盘）**，支持 GB 级大文件。链接粘贴后自动探测文件名与大小（优先读 Content-Disposition），可手动改名。任务并发 2 个，超出排队；任务列表实时显示进度与速率，失败可重试，服务重启后未完成任务标记失败可手动重试。Workers 版无此功能。
+文件列表工具栏的「离线下载」：粘贴 http/https 直链，服务器在后台流式下载并**分块直传 R2（不落盘）**，支持 GB 级大文件。链接粘贴后自动探测文件名与大小（优先读 Content-Disposition），可手动改名。任务并发 2 个，超出排队；任务列表实时显示进度与速率，失败可重试，服务重启后未完成任务标记失败可手动重试。Workers 版无此功能。详细说明见 [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md)。
 
 ## API
 
