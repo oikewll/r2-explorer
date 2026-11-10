@@ -838,6 +838,70 @@ app.get('/api/list', authGuard, async (c) => {
   return c.json({ bucket, prefix, crumbs, dirs, files, truncated: xml.includes('<IsTruncated>true</IsTruncated>') })
 })
 
+// 全局搜索：递归遍历桶内对象，按关键字（大小写不敏感）匹配完整路径。
+// 免费版子请求预算 50：每页 1 个子请求，限制扫描页数
+app.get('/api/search', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const q = (c.req.query('q') || '').trim().toLowerCase()
+  const scope = c.req.query('prefix') || ''
+  if (!bucket) return c.json({ error: 'missing bucket' }, 400)
+  if (!q) return c.json({ files: [], more: false })
+  const limit = Math.min(Number(c.req.query('limit')) || 100, 300)
+  const MAX_PAGES = 40 // 每页 1000 个对象
+
+  const files = []
+  let more = false
+  let token = ''
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const u = new URL(`${c._s3Base}/${bucket}`)
+    u.searchParams.set('list-type', '2')
+    u.searchParams.set('max-keys', '1000')
+    if (scope) u.searchParams.set('prefix', scope)
+    if (token) u.searchParams.set('continuation-token', token)
+    const res = await c._r2.fetch(u)
+    if (res.status === 404) return c.json({ error: 'bucket not found' }, 404)
+    if (!res.ok) return c.json({ error: `ListObjects failed: ${res.status}` }, 500)
+    const xml = await res.text()
+
+    let hit = false
+    for (const obj of xmlBlocks(xml, 'Contents')) {
+      const key = xmlPick(obj, 'Key')
+      if (key.endsWith('/')) continue // 目录占位对象跳过
+      if (!key.toLowerCase().includes(q)) continue
+      const name = key.split('/').pop()
+      const size = Number(xmlPick(obj, 'Size')) || 0
+      const modified = xmlPick(obj, 'LastModified')
+      const { url, presigned } = await fileUrl(c, bucket, key)
+      files.push({
+        type: 'file',
+        name,
+        path: key,
+        dir: key.slice(0, key.length - name.length),
+        size,
+        sizeText: formatSize(size),
+        modified,
+        modifiedText: formatTime(modified),
+        url,
+        presigned,
+      })
+      if (files.length >= limit) {
+        hit = true
+        break
+      }
+    }
+    const truncated = xmlPick(xml, 'IsTruncated') === 'true'
+    if (hit) {
+      more = truncated
+      break
+    }
+    if (!truncated) break
+    token = xmlPick(xml, 'NextContinuationToken')
+    if (!token) break
+    if (page === MAX_PAGES - 1) more = true
+  }
+  return c.json({ files, more })
+})
+
 // single file head info
 app.get('/api/info', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
@@ -1273,7 +1337,8 @@ app.get('/api/raw', authGuard, async (c) => {
   }
   h.set('Accept-Ranges', 'bytes')
   h.set('Cache-Control', 'private, max-age=300')
-  return new Response(res.body, { status: 200, headers: h })
+  // Range 命中时必须回 206——回 200 但带 Content-Range 属于畸形响应，会让浏览器 <video> 卡死
+  return new Response(res.body, { status: res.status, headers: h })
 })
 
 // 列出 zip（apk/ipa/jar 同为 zip 格式）内的文件：Range 读尾部 EOCD + 中央目录

@@ -12,6 +12,8 @@ import Confirm from './Confirm'
 import MoveModal from './MoveModal'
 import RenameModal from './RenameModal'
 import CreateFolderModal from './CreateFolderModal'
+import SearchModal, { PENDING_OPEN } from './SearchModal'
+import { DirTile, FileTile } from './GridView'
 
 function Crumbs({ crumbs, bucket }) {
   return (
@@ -81,8 +83,15 @@ export default function Explorer({ route }) {
   const [renameItem, setRenameItem] = useState(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('r2x_view') || 'list')
+  const [searching, setSearching] = useState(false)
   const fileInput = useRef(null)
   const dragCounter = useRef(0)
+
+  const switchView = (m) => {
+    setViewMode(m)
+    localStorage.setItem('r2x_view', m)
+  }
 
   const bucket = route.bucket
   const prefix = route.prefix
@@ -114,6 +123,41 @@ export default function Explorer({ route }) {
   useEffect(() => {
     capabilities().then(setCaps).catch(() => {})
   }, [])
+
+  // Ctrl/Cmd + K 唤起全局搜索
+  useEffect(() => {
+    const fn = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearching(true)
+      }
+    }
+    document.addEventListener('keydown', fn)
+    return () => document.removeEventListener('keydown', fn)
+  }, [])
+
+  // 全局搜索跳转：落在目标目录后自动打开文件预览
+  useEffect(() => {
+    if (!data || searching) return
+    const raw = sessionStorage.getItem(PENDING_OPEN)
+    if (!raw) return
+    try {
+      const p = JSON.parse(raw)
+      const dir = p.path.slice(0, p.path.lastIndexOf('/') + 1)
+      if (p.bucket === bucket && dir === prefix) {
+        sessionStorage.removeItem(PENDING_OPEN)
+        const f = data.files.find((x) => x.path === p.path)
+        if (f) {
+          const cat = categoryOf(f.name)
+          const withBucket = (x) => ({ ...x, bucket })
+          const siblings = data.files
+            .filter((x) => categoryOf(x.name) === cat && ['video', 'image'].includes(cat))
+            .map(withBucket)
+          setPreview({ mode: 'file', f: withBucket(f), ...(siblings.length > 1 ? { siblings } : {}) })
+        }
+      }
+    } catch {}
+  }, [data, bucket, prefix, searching])
 
   // 有下载任务结束（完成/失败）时刷新目录，新文件及时出现
   useEffect(() => {
@@ -276,6 +320,30 @@ export default function Explorer({ route }) {
             </option>
           ))}
         </select>
+        <div className="flex h-9 shrink-0 items-center overflow-hidden rounded-lg border border-line" role="group">
+          <button
+            className={`flex h-full w-9 items-center justify-center transition-colors ${
+              viewMode === 'list' ? 'bg-accent-soft text-accent' : 'text-ink2 hover:bg-ink/[0.05] hover:text-ink'
+            }`}
+            title="列表视图"
+            onClick={() => switchView('list')}
+          >
+            <UIcon name="list" size={15} />
+          </button>
+          <button
+            className={`flex h-full w-9 items-center justify-center transition-colors ${
+              viewMode === 'grid' ? 'bg-accent-soft text-accent' : 'text-ink2 hover:bg-ink/[0.05] hover:text-ink'
+            }`}
+            title="网格视图（图片/视频显示缩略图）"
+            onClick={() => switchView('grid')}
+          >
+            <UIcon name="grid" size={15} />
+          </button>
+        </div>
+        <button className="btn-plain h-9" title="全局搜索（Ctrl+K）" onClick={() => setSearching(true)}>
+          <UIcon name="search" size={15} />
+          全局搜索
+        </button>
         <button className="btn-plain h-9" onClick={() => setCreatingFolder(true)}>
           <UIcon name="folderPlus" size={15} />
           新建文件夹
@@ -322,6 +390,33 @@ export default function Explorer({ route }) {
           <FIcon type="folder" size={56} />
           <div className="mt-3">这个目录是空的</div>
           <div className="mt-1 text-[13px] text-ink2/70">拖拽文件到这里，或点击上方「上传」</div>
+        </div>
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
+          {items.dirs.map((d) => (
+            <DirTile
+              key={d.path}
+              d={d}
+              selected={selected.has(d.path)}
+              anySelected={selected.size > 0}
+              onToggle={() => toggleSelect(d.path)}
+              onOpen={() => navigate(bucket, d.path)}
+              onRename={() => setRenameItem({ ...d, isDir: true })}
+              onDelete={() => askDelete([{ ...d, isDir: true }])}
+            />
+          ))}
+          {items.files.map((f) => (
+            <FileTile
+              key={f.path}
+              f={{ ...f, _iconType: iconType(f.name) }}
+              selected={selected.has(f.path)}
+              anySelected={selected.size > 0}
+              onToggle={() => toggleSelect(f.path)}
+              onOpen={() => openFile(f)}
+              onRename={() => setRenameItem({ ...f, isDir: false })}
+              onDelete={() => askDelete([{ ...f, isDir: false }])}
+            />
+          ))}
         </div>
       ) : (
         <div className="card overflow-hidden">
@@ -452,6 +547,7 @@ export default function Explorer({ route }) {
           }}
         />
       )}
+      {searching && <SearchModal bucket={bucket} onClose={() => setSearching(false)} />}
     </div>
   )
 }

@@ -812,6 +812,62 @@ app.get('/api/list', authGuard, async (c) => {
   return c.json({ bucket, prefix, crumbs, dirs, files, truncated: res.IsTruncated || false })
 })
 
+// 全局搜索：递归遍历桶内对象，按关键字（大小写不敏感）匹配完整路径
+app.get('/api/search', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const q = (c.req.query('q') || '').trim().toLowerCase()
+  const scope = c.req.query('prefix') || ''
+  if (!bucket) return c.json({ error: 'missing bucket' }, 400)
+  if (!q) return c.json({ files: [], more: false })
+  const limit = Math.min(Number(c.req.query('limit')) || 100, 300)
+  const MAX_SCAN = 50000 // 最多扫描的对象数，防止超大桶长时间遍历
+
+  const files = []
+  let token
+  let more = false
+  let scanned = 0
+  while (true) {
+    const res = await c._s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: scope || undefined,
+        MaxKeys: 1000,
+        ContinuationToken: token,
+      })
+    )
+    for (const o of res.Contents || []) {
+      scanned++
+      if (o.Key.endsWith('/')) continue // 目录占位对象跳过
+      if (!o.Key.toLowerCase().includes(q)) continue
+      const name = o.Key.split('/').pop()
+      const { url, presigned } = await fileUrl(c, bucket, o.Key)
+      files.push({
+        type: 'file',
+        name,
+        path: o.Key,
+        dir: o.Key.slice(0, o.Key.length - name.length),
+        size: o.Size,
+        sizeText: formatSize(o.Size),
+        modified: o.LastModified,
+        modifiedText: formatTime(o.LastModified),
+        url,
+        presigned,
+      })
+      if (files.length >= limit) break
+    }
+    if (files.length >= limit) {
+      more = !!res.IsTruncated
+      break
+    }
+    if (!res.IsTruncated || scanned >= MAX_SCAN) {
+      more = !!res.IsTruncated && scanned >= MAX_SCAN
+      break
+    }
+    token = res.NextContinuationToken
+  }
+  return c.json({ files, more, scanned })
+})
+
 // single file head info
 app.get('/api/info', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
@@ -917,13 +973,16 @@ app.get('/api/raw', authGuard, async (c) => {
     if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
     return c.json({ error: `GetObject failed: ${code || e.message}` }, 500)
   }
+  // Range 命中时必须回 206——回 200 但带 Content-Range 属于畸形响应，会让浏览器 <video> 卡死
+  const partial = range && obj.ContentRange
   const headers = {
     'Content-Type': obj.ContentType || 'application/octet-stream',
     ...(obj.ContentLength != null ? { 'Content-Length': String(obj.ContentLength) } : {}),
-    ...(range && obj.ContentRange ? { 'Content-Range': obj.ContentRange } : {}),
+    ...(partial ? { 'Content-Range': obj.ContentRange } : {}),
+    'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=300',
   }
-  return c.body(obj.Body.transformToWebStream(), 200, headers)
+  return c.body(obj.Body.transformToWebStream(), partial ? 206 : 200, headers)
 })
 
 // 列出压缩包内文件（zip 用 Range 手工解析；rar/7z/tar.gz 走 archives.js 整包 WASM 解析）
