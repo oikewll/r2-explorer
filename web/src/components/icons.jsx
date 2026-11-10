@@ -144,6 +144,13 @@ export function FIcon({ type, size = 30 }) {
 }
 
 const UI_PATHS = {
+  folderPlus: (
+    <>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="10" x2="12" y2="16" />
+      <line x1="9" y1="13" x2="15" y2="13" />
+    </>
+  ),
   copy: (
     <>
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />

@@ -636,6 +636,21 @@ app.post('/api/move-tree', authGuard, async (c) => {
   return c.json({ ok: failed.length === 0, moved, folders, failed })
 })
 
+// 新建文件夹：R2 目录是 key 以 / 结尾的零字节对象
+app.post('/api/mkdir', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  if (!key.endsWith('/') || key.includes('..') || key.slice(0, -1).includes('//')) {
+    return c.json({ error: 'bad key' }, 400)
+  }
+  await c._s3.send(
+    new PutObjectCommand({ Bucket: bucket, Key: key, Body: new Uint8Array(0), ContentLength: 0 })
+  )
+  invalidateStats(c, bucket)
+  return c.json({ ok: true, key })
+})
+
 // 上传文件（单文件上限 100MB）
 app.post('/api/upload', authGuard, async (c) => {
   const bucket = c.req.query('bucket')

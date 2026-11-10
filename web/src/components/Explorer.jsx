@@ -11,6 +11,7 @@ import Preview from './Preview'
 import Confirm from './Confirm'
 import MoveModal from './MoveModal'
 import RenameModal from './RenameModal'
+import CreateFolderModal from './CreateFolderModal'
 
 function Crumbs({ crumbs, bucket }) {
   return (
@@ -78,6 +79,7 @@ export default function Explorer({ route }) {
   const [confirm, setConfirm] = useState(null) // { title, message, onOk }
   const [moveItems, setMoveItems] = useState(null)
   const [renameItem, setRenameItem] = useState(null)
+  const [creatingFolder, setCreatingFolder] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const fileInput = useRef(null)
   const dragCounter = useRef(0)
@@ -274,6 +276,10 @@ export default function Explorer({ route }) {
             </option>
           ))}
         </select>
+        <button className="btn-plain h-9" onClick={() => setCreatingFolder(true)}>
+          <UIcon name="folderPlus" size={15} />
+          新建文件夹
+        </button>
         <button className="btn-primary h-9" onClick={() => fileInput.current?.click()}>
           <UIcon name="upload" size={15} />
           上传
@@ -431,6 +437,17 @@ export default function Explorer({ route }) {
           onDone={() => {
             setRenameItem(null)
             setSelected(new Set())
+            refresh()
+          }}
+        />
+      )}
+      {creatingFolder && (
+        <CreateFolderModal
+          bucket={bucket}
+          prefix={prefix}
+          onClose={() => setCreatingFolder(false)}
+          onDone={() => {
+            setCreatingFolder(false)
             refresh()
           }}
         />

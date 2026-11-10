@@ -639,6 +639,24 @@ app.post('/api/move-tree', authGuard, async (c) => {
   return c.json({ ok: failed.length === 0, moved, folders, failed })
 })
 
+// 新建文件夹：R2 目录是 key 以 / 结尾的零字节对象
+app.post('/api/mkdir', authGuard, async (c) => {
+  const bucket = c.req.query('bucket')
+  const key = c.req.query('key')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  if (!key.endsWith('/') || key.includes('..') || key.slice(0, -1).includes('//')) {
+    return c.json({ error: 'bad key' }, 400)
+  }
+  const res = await c._r2.fetch(objUrl(c, bucket, key), {
+    method: 'PUT',
+    headers: { 'Content-Length': '0' },
+    body: '',
+  })
+  if (!res.ok) return c.json({ error: `PutObject failed: ${res.status}` }, 500)
+  await caches.default.delete(statsCacheKey(c, bucket))
+  return c.json({ ok: true, key })
+})
+
 // 上传文件（Worker 代理转发到 R2，单文件上限 100MB）
 app.post('/api/upload', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
@@ -889,8 +907,307 @@ async function s3GetRange(c, bucket, key, start, end) {
   return res
 }
 
-// 能力探测：Workers 无法运行 ffmpeg/后台下载，转码与离线下载仅 Docker 自托管版支持
-app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: false, offlineDownload: false }))
+// 能力探测：转码仅 Docker 版支持；离线下载在 Workers 免费版以受限形态支持（需绑定 KV 存任务）
+app.get('/api/capabilities', authGuard, (c) =>
+  c.json({ transcode: false, offlineDownload: !!c.env.ACCOUNTS_KV })
+)
+
+// ---------- 离线下载（Workers 免费版受限实现） ----------
+// 与 Node 版差异：单 PUT 流式直传（不分片）+ 体积上限，规避免费版子请求（50/请求）与 CPU（10ms）限制。
+// 子请求预算：源站 fetch(1) + R2 PUT(1) + 进度写（≤40，节流 10s）+ 收尾 ≈ 45 以内。
+// 任务存 KV（复用 ACCOUNTS_KV，key 前缀 dl:，展示数据放 metadata，list 一次拿全）；
+// 运行中任务不可中断（DELETE 仅移除记录，后台会跑完且不再写回）。
+const DL_KEY_PREFIX = 'dl:'
+const DL_DEFAULT_MAX_MB = 100 // 可用 [vars] OFFLINE_MAX_SIZE_MB 覆盖；免费版 CPU 10ms 下建议 ≤100
+const DL_PROGRESS_INTERVAL_MS = 15 * 1000
+// 子请求预算（免费版 50/请求）：源站 fetch(1) + R2 PUT(1) + 进度写 20×2(get+put) + 收尾(2) + 探测/创建(≈4) ≈ 48
+// 超出后停止写进度（任务静默跑到结束），防整条请求被子请求上限打断
+const DL_MAX_PROGRESS_WRITES = 20
+
+function dlMaxSize(env) {
+  const n = Number(env.OFFLINE_MAX_SIZE_MB)
+  return (Number.isFinite(n) && n > 0 ? n : DL_DEFAULT_MAX_MB) * 1024 * 1024
+}
+
+function dlMeta(t) {
+  // KV metadata 上限 1024B，url 截断存展示用途；完整数据在 value（retry 用）
+  return { ...t, url: String(t.url || '').slice(0, 240) }
+}
+
+function dlCapText(env) {
+  const mb = Number(env.OFFLINE_MAX_SIZE_MB)
+  return `${Number.isFinite(mb) && mb > 0 ? mb : DL_DEFAULT_MAX_MB}MB`
+}
+
+// 探测直链：HEAD 失败退回 Range GET；返回 { name, size, contentType } 或 { error }
+async function dlProbe(url) {
+  if (!/^https?:\/\//i.test(url)) return { error: '仅支持 http/https 直链' }
+  const ua = { 'user-agent': 'r2-explorer (+offline-download)', 'accept-encoding': 'identity' }
+  try {
+    let res = await fetch(url, { method: 'HEAD', redirect: 'follow', headers: ua })
+    if (!res.ok) {
+      res = await fetch(url, { headers: { ...ua, range: 'bytes=0-0' }, redirect: 'follow' })
+      try { await res.body?.cancel() } catch {}
+      if (!res.ok && res.status !== 206) return { error: `无法访问该链接：HTTP ${res.status}` }
+    } else {
+      try { await res.body?.cancel() } catch {}
+    }
+    let name = ''
+    const disp = res.headers.get('content-disposition') || ''
+    const star = /filename\*\s*=\s*(?:utf-8|UTF-8)''([^;]+)/.exec(disp)
+    if (star) { try { name = decodeURIComponent(star[1]).trim() } catch {} }
+    if (!name) {
+      const plain = /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/.exec(disp)
+      if (plain) name = (plain[1] || plain[2] || '').trim()
+    }
+    if (!name) {
+      try {
+        const seg = new URL(url).pathname.split('/').filter(Boolean).pop()
+        name = seg ? decodeURIComponent(seg) : ''
+      } catch {}
+    }
+    let size = Number(res.headers.get('content-length') || '')
+    const cr = /bytes\s+\d+-\d+\/(\d+|\*)/.exec(res.headers.get('content-range') || '')
+    if (cr && cr[1] !== '*') size = Number(cr[1])
+    return {
+      name: name || '',
+      size: Number.isFinite(size) && size >= 0 ? size : -1,
+      contentType: (res.headers.get('content-type') || '').split(';')[0].trim(),
+    }
+  } catch (e) {
+    return { error: `无法访问该链接：${e?.message || e}` }
+  }
+}
+
+function dlSanitizeName(name) {
+  return String(name || '')
+    .replace(/[/\\:\*\?"<>|\x00-\x1f]/g, '_')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 200)
+}
+
+function dlDefaultName() {
+  const d = new Date()
+  const pad = (x) => String(x).padStart(2, '0')
+  return `download-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+}
+
+// 后台执行：流式下载 → S3 PUT 直传 R2
+async function dlRun(env, task) {
+  const kv = env.ACCOUNTS_KV
+  const kvKey = DL_KEY_PREFIX + task.id
+  const persist = async (patch) => {
+    try {
+      const raw = await kv.get(kvKey)
+      if (!raw) return // 记录已被删除（用户移除），不再写回
+      const t = { ...JSON.parse(raw), ...patch }
+      await kv.put(kvKey, JSON.stringify(t), { metadata: dlMeta(t) })
+    } catch {}
+  }
+
+  const store = await readStore(env)
+  const acc =
+    effectiveAccounts(store, env).find((a) => a.id === task.accountId) ||
+    effectiveAccounts(store, env)[0]
+  if (!acc) {
+    await persist({ status: 'failed', error: '任务绑定的 R2 账号已被移除', speed: 0, finishedAt: Date.now() })
+    return
+  }
+  const client = new AwsClient({
+    accessKeyId: acc.accessKeyId,
+    secretAccessKey: acc.secretAccessKey,
+    service: 's3',
+    region: 'auto',
+  })
+  const s3Base = `https://${acc.accountId}.r2.cloudflarestorage.com`
+  const url = `${s3Base}/${task.bucket}/${task.key.split('/').map(encodeURIComponent).join('/')}`
+
+  try {
+    const dl = await fetch(task.url, {
+      redirect: 'follow',
+      headers: { 'user-agent': 'r2-explorer (+offline-download)', 'accept-encoding': 'identity' },
+    })
+    if (!dl.ok) throw new Error(`下载失败：HTTP ${dl.status} ${dl.statusText || ''}`.trim())
+    if (!dl.body) throw new Error('下载失败：响应没有内容')
+
+    const cl = Number(dl.headers.get('content-length') || '')
+    const knownLen = Number.isFinite(cl) && cl >= 0
+    if (!knownLen) throw new Error('源站未返回文件大小（Content-Length），免费版无法流式转存，请换直链或用自托管版')
+    if (cl > dlMaxSize(env)) throw new Error(`文件超出体积上限（${dlCapText(env)}）`)
+
+    const ctype = (dl.headers.get('content-type') || '').split(';')[0].trim()
+
+    // 计数流：进度可见 + 超限即时失败（防源站谎报大小）
+    let downloaded = 0
+    const max = dlMaxSize(env)
+    const counter = new TransformStream({
+      transform(chunk, ctrl) {
+        downloaded += chunk.byteLength
+        if (downloaded > max) ctrl.error(new Error(`文件超出体积上限（${dlCapText(env)}）`))
+        else ctrl.enqueue(chunk)
+      },
+    })
+
+    // 进度节流写 KV（每写 = get 校验 + put，2 个子请求）；速率按采样差值计算
+    let writes = 0
+    let lastTick = Date.now()
+    let lastBytes = 0
+    const timer = setInterval(() => {
+      const now = Date.now()
+      if (writes >= DL_MAX_PROGRESS_WRITES) {
+        clearInterval(timer) // 子请求预算耗尽，静默跑到结束
+        return
+      }
+      writes++
+      const dt = now - lastTick
+      const speed = dt > 200 ? Math.round(((downloaded - lastBytes) * 1000) / dt) : 0
+      lastBytes = downloaded
+      lastTick = now
+      persist({ status: 'running', downloaded, speed })
+    }, DL_PROGRESS_INTERVAL_MS)
+
+    let res
+    try {
+      res = await client.fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': ctype && ctype !== 'application/octet-stream' ? ctype : mimeFor(task.key),
+          'Content-Length': String(cl),
+        },
+        body: downloaded === 0 && cl === 0 ? new Uint8Array(0) : dl.body.pipeThrough(counter),
+      })
+    } finally {
+      clearInterval(timer)
+    }
+    if (!res.ok) throw new Error(`R2 PutObject failed: ${res.status}`)
+    await persist({
+      status: 'completed',
+      downloaded: cl,
+      size: cl,
+      speed: 0,
+      finishedAt: Date.now(),
+      error: '',
+    })
+  } catch (e) {
+    await persist({
+      status: 'failed',
+      error: String(e?.message || e).slice(0, 280),
+      speed: 0,
+      finishedAt: Date.now(),
+    })
+  }
+}
+
+// 探测（创建任务前预填文件名/大小）
+app.post('/api/download/resolve', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const r = await dlProbe(String(body.url || '').trim())
+  if (r.error) return c.json({ error: r.error }, 400)
+  return c.json(r)
+})
+
+// 任务列表：一次 KV list 直接读 metadata
+app.get('/api/download/tasks', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ tasks: [] })
+  const list = await c.env.ACCOUNTS_KV.list({ prefix: DL_KEY_PREFIX })
+  const tasks = (list.keys || [])
+    .map((k) => k.metadata)
+    .filter(Boolean)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  return c.json({ tasks })
+})
+
+// 创建任务
+app.post('/api/download/tasks', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储（ACCOUNTS_KV），离线下载不可用' }, 400)
+  if (!c._account) return c.json({ error: '未配置 R2 凭证' }, 500)
+  const body = await c.req.json().catch(() => ({}))
+  const url = String(body.url || '').trim()
+  const bucket = String(body.bucket || '')
+  const prefix = String(body.prefix || '')
+  if (!/^https?:\/\//i.test(url)) return c.json({ error: '仅支持 http/https 直链' }, 400)
+  if (!bucket) return c.json({ error: 'missing bucket' }, 400)
+  if (prefix && !prefix.endsWith('/')) return c.json({ error: 'bad prefix' }, 400)
+
+  // 创建时探测：大小未知或超限直接拒绝（免费版单 PUT 流式需要已知长度）
+  const probe = await dlProbe(url)
+  if (probe.error) return c.json({ error: probe.error }, 400)
+  if (probe.size < 0) return c.json({ error: '无法确定文件大小，免费版离线下载要求直链带 Content-Length' }, 400)
+  if (probe.size > dlMaxSize(c.env)) {
+    return c.json({ error: `文件 ${probe.size} 字节超出体积上限（${dlCapText(c.env)}），免费版仅支持小文件` }, 413)
+  }
+
+  const name =
+    dlSanitizeName(body.name) || dlSanitizeName(probe.name) || dlDefaultName()
+  const key = prefix + name
+  if (key.endsWith('/') || key.includes('//')) return c.json({ error: '目标路径不合法' }, 400)
+
+  // 相同目标任务进行中则拒绝
+  const list = await c.env.ACCOUNTS_KV.list({ prefix: DL_KEY_PREFIX })
+  const dup = (list.keys || []).some((k) => {
+    const m = k.metadata
+    return m && m.bucket === bucket && m.key === key && (m.status === 'queued' || m.status === 'running')
+  })
+  if (dup) return c.json({ error: '相同目标文件的任务正在进行中' }, 409)
+
+  const t = {
+    id: crypto.randomUUID().slice(0, 8),
+    url,
+    bucket,
+    key,
+    accountId: c._account.id,
+    status: 'queued',
+    name,
+    size: probe.size,
+    downloaded: 0,
+    speed: 0,
+    error: '',
+    createdAt: Date.now(),
+    finishedAt: null,
+  }
+  await c.env.ACCOUNTS_KV.put(DL_KEY_PREFIX + t.id, JSON.stringify(t), { metadata: dlMeta(t) })
+  c.executionCtx.waitUntil(dlRun(c.env, t))
+  return c.json({ ok: true, task: t })
+})
+
+// 重试（重新排队执行）
+app.post('/api/download/tasks/:id/retry', authGuard, async (c) => {
+  const kv = c.env.ACCOUNTS_KV
+  if (!kv) return c.json({ error: '未绑定 KV 存储' }, 400)
+  const kvKey = DL_KEY_PREFIX + c.req.param('id')
+  const raw = await kv.get(kvKey)
+  if (!raw) return c.json({ error: '任务不存在' }, 404)
+  const t = JSON.parse(raw)
+  if (t.status !== 'failed' && t.status !== 'cancelled') return c.json({ error: '该状态不可重试' }, 400)
+  Object.assign(t, { status: 'queued', downloaded: 0, speed: 0, error: '', finishedAt: null })
+  await kv.put(kvKey, JSON.stringify(t), { metadata: dlMeta(t) })
+  c.executionCtx.waitUntil(dlRun(c.env, t))
+  return c.json({ ok: true })
+})
+
+// 删除任务（运行中的任务无法中断：仅移除记录，后台会跑完且不再写回）
+app.delete('/api/download/tasks/:id', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储' }, 400)
+  await c.env.ACCOUNTS_KV.delete(DL_KEY_PREFIX + c.req.param('id'))
+  return c.json({ ok: true })
+})
+
+// 清理已结束任务（单次最多 40 个，防子请求超限）
+app.post('/api/download/clear', authGuard, async (c) => {
+  const kv = c.env.ACCOUNTS_KV
+  if (!kv) return c.json({ error: '未绑定 KV 存储' }, 400)
+  const list = await kv.list({ prefix: DL_KEY_PREFIX })
+  const done = (list.keys || []).filter(
+    (k) => k.metadata && !['queued', 'running'].includes(k.metadata.status)
+  )
+  let removed = 0
+  for (const k of done.slice(0, 40)) {
+    await kv.delete(k.name)
+    removed++
+  }
+  return c.json({ ok: true, removed, remaining: done.length - removed })
+})
 
 // 文本预览代理（同源，避免 CDN CORS 问题）
 app.get('/api/text', authGuard, async (c) => {
