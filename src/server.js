@@ -13,6 +13,7 @@ import {
   CopyObjectCommand,
   PutObjectCommand,
   CreateBucketCommand,
+  DeleteBucketCommand,
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
@@ -392,6 +393,27 @@ app.post('/api/buckets', authGuard, async (c) => {
       return c.json({ error: '同名存储桶已存在' }, 409)
     }
     return c.json({ error: `CreateBucket failed: ${e.message || e}` }, 500)
+  }
+})
+
+// 删除存储桶（桶必须为空；前端需输入完整桶名二次确认）
+app.delete('/api/buckets/:name', authGuard, async (c) => {
+  const name = c.req.param('name')
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(name)) {
+    return c.json({ error: '桶名称格式不正确' }, 400)
+  }
+  try {
+    await c._s3.send(new DeleteBucketCommand({ Bucket: name }))
+    statsCache.delete(`${c._account?.id || 'env'}:${name}`)
+    return c.json({ ok: true })
+  } catch (e) {
+    if (e.name === 'BucketNotEmpty' || e?.$metadata?.httpStatusCode === 409) {
+      return c.json({ error: '存储桶不为空，请先清空桶内所有文件（含文件夹）后再删除' }, 409)
+    }
+    if (e.name === 'NoSuchBucket' || e?.$metadata?.httpStatusCode === 404) {
+      return c.json({ error: '存储桶不存在' }, 404)
+    }
+    return c.json({ error: `DeleteBucket failed: ${e.message || e}` }, 500)
   }
 })
 

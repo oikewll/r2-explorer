@@ -373,6 +373,23 @@ app.post('/api/buckets', authGuard, async (c) => {
   return c.json({ error: `CreateBucket failed: ${xmlPick(xml, 'Code') || res.status}` }, 500)
 })
 
+// 删除存储桶（桶必须为空；前端需输入完整桶名二次确认）
+app.delete('/api/buckets/:name', authGuard, async (c) => {
+  const name = c.req.param('name')
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(name)) {
+    return c.json({ error: '桶名称格式不正确' }, 400)
+  }
+  const res = await c._r2.fetch(`${c._s3Base}/${name}`, { method: 'DELETE' })
+  if (res.ok) {
+    await caches.default.delete(statsCacheKey(c, name))
+    return c.json({ ok: true })
+  }
+  if (res.status === 409) return c.json({ error: '存储桶不为空，请先清空桶内所有文件（含文件夹）后再删除' }, 409)
+  if (res.status === 404) return c.json({ error: '存储桶不存在' }, 404)
+  const xml = await res.text()
+  return c.json({ error: `DeleteBucket failed: ${xmlPick(xml, 'Code') || res.status}` }, 500)
+})
+
 // 桶统计：分页列举聚合对象数/总大小/最后更新时间
 app.get('/api/stats', authGuard, async (c) => {
   const bucket = c.req.query('bucket')
