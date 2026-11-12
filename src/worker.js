@@ -1084,11 +1084,13 @@ app.get('/api/capabilities', authGuard, (c) =>
 // 任务存 KV（复用 ACCOUNTS_KV，key 前缀 dl:，展示数据放 metadata，list 一次拿全）；
 // 运行中任务不可中断（DELETE 仅移除记录，后台会跑完且不再写回）。
 const DL_KEY_PREFIX = 'dl:'
+const DL_INDEX_KEY = 'dl:index_v1' // 任务索引：单 key 存全部任务摘要，轮询读走 get（免费版读配额 10 万/天）；list() 仅首次迁移用（免费版 list 仅 1000 次/天）
+const DL_INDEX_MAX = 100
 const DL_DEFAULT_MAX_MB = 100 // 可用 [vars] OFFLINE_MAX_SIZE_MB 覆盖；免费版 CPU 10ms 下建议 ≤100
 const DL_PROGRESS_INTERVAL_MS = 15 * 1000
-// 子请求预算（免费版 50/请求）：源站 fetch(1) + R2 PUT(1) + 进度写 20×2(get+put) + 收尾(2) + 探测/创建(≈4) ≈ 48
+// 子请求预算（免费版 50/请求）：读账号(1) + 源站 fetch(1) + R2 PUT(1) + 进度写 10×4(get+put 任务 + get+put 索引) + 收尾(4) ≈ 46
 // 超出后停止写进度（任务静默跑到结束），防整条请求被子请求上限打断
-const DL_MAX_PROGRESS_WRITES = 20
+const DL_MAX_PROGRESS_WRITES = 10
 
 function dlMaxSize(env) {
   const n = Number(env.OFFLINE_MAX_SIZE_MB)
@@ -1103,6 +1105,29 @@ function dlMeta(t) {
 function dlCapText(env) {
   const mb = Number(env.OFFLINE_MAX_SIZE_MB)
   return `${Number.isFinite(mb) && mb > 0 ? mb : DL_DEFAULT_MAX_MB}MB`
+}
+
+// 任务索引读写：全部任务摘要存单个 key。get/put 走读/写配额，不再依赖 list()
+async function dlReadIndex(kv) {
+  const raw = await kv.get(DL_INDEX_KEY)
+  if (raw) {
+    try {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) return arr
+    } catch {}
+  }
+  // 首次迁移：用一次 list() 从旧 dl:* keys 建索引（之后索引存在就不再 list）
+  const list = await kv.list({ prefix: DL_KEY_PREFIX })
+  const tasks = (list.keys || [])
+    .filter((k) => k.name !== DL_INDEX_KEY && k.metadata)
+    .map((k) => k.metadata)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  await kv.put(DL_INDEX_KEY, JSON.stringify(tasks.slice(0, DL_INDEX_MAX)))
+  return tasks
+}
+
+async function dlWriteIndex(kv, tasks) {
+  await kv.put(DL_INDEX_KEY, JSON.stringify(tasks.slice(0, DL_INDEX_MAX)))
 }
 
 // 探测直链：HEAD 失败退回 Range GET；返回 { name, size, contentType } 或 { error }
@@ -1170,6 +1195,14 @@ async function dlRun(env, task) {
       if (!raw) return // 记录已被删除（用户移除），不再写回
       const t = { ...JSON.parse(raw), ...patch }
       await kv.put(kvKey, JSON.stringify(t), { metadata: dlMeta(t) })
+      // 同步任务索引（进度/状态）；索引读写失败不影响任务本身
+      try {
+        const index = await dlReadIndex(kv)
+        const i = index.findIndex((m) => m.id === t.id)
+        if (i >= 0) index[i] = dlMeta(t)
+        else index.unshift(dlMeta(t))
+        await dlWriteIndex(kv, index)
+      } catch {}
     } catch {}
   }
 
@@ -1315,14 +1348,13 @@ app.get('/api/download/tasks', authGuard, async (c) => {
     return c.json({ tasks: dlTasksCache.tasks, cached: true })
   }
   try {
-    const list = await c.env.ACCOUNTS_KV.list({ prefix: DL_KEY_PREFIX })
-    const tasks = (list.keys || [])
-      .map((k) => k.metadata)
-      .filter(Boolean)
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    const tasks = (await dlReadIndex(c.env.ACCOUNTS_KV)).sort(
+      (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
+    )
     dlTasksCache = { at: Date.now(), tasks }
     return c.json({ tasks })
   } catch (e) {
+    // KV 读失败（如配额超限）：返回最近缓存，避免前端反复 500
     return c.json({ tasks: dlTasksCache.tasks, stale: true })
   }
 })
@@ -1352,13 +1384,19 @@ app.post('/api/download/tasks', authGuard, async (c) => {
   const key = prefix + name
   if (key.endsWith('/') || key.includes('//')) return c.json({ error: '目标路径不合法' }, 400)
 
-  // 相同目标任务进行中则拒绝
-  const list = await c.env.ACCOUNTS_KV.list({ prefix: DL_KEY_PREFIX })
-  const dup = (list.keys || []).some((k) => {
-    const m = k.metadata
-    return m && m.bucket === bucket && m.key === key && (m.status === 'queued' || m.status === 'running')
-  })
-  if (dup) return c.json({ error: '相同目标文件的任务正在进行中' }, 409)
+  // 相同目标任务进行中则拒绝（读索引，不调 list()）
+  const kv = c.env.ACCOUNTS_KV
+  let index = []
+  try {
+    index = await dlReadIndex(kv)
+  } catch {}
+  if (
+    index.some(
+      (m) => m.bucket === bucket && m.key === key && (m.status === 'queued' || m.status === 'running')
+    )
+  ) {
+    return c.json({ error: '相同目标文件的任务正在进行中' }, 409)
+  }
 
   const t = {
     id: crypto.randomUUID().slice(0, 8),
@@ -1376,6 +1414,9 @@ app.post('/api/download/tasks', authGuard, async (c) => {
     finishedAt: null,
   }
   await c.env.ACCOUNTS_KV.put(DL_KEY_PREFIX + t.id, JSON.stringify(t), { metadata: dlMeta(t) })
+  try {
+    await dlWriteIndex(kv, [dlMeta(t), ...index])
+  } catch {}
   dlTasksBust()
   c.executionCtx.waitUntil(dlRun(c.env, t))
   return c.json({ ok: true, task: t })
@@ -1392,6 +1433,14 @@ app.post('/api/download/tasks/:id/retry', authGuard, async (c) => {
   if (t.status !== 'failed' && t.status !== 'cancelled') return c.json({ error: '该状态不可重试' }, 400)
   Object.assign(t, { status: 'queued', downloaded: 0, speed: 0, error: '', finishedAt: null })
   await kv.put(kvKey, JSON.stringify(t), { metadata: dlMeta(t) })
+  try {
+    const index = await dlReadIndex(kv)
+    const i = index.findIndex((m) => m.id === t.id)
+    if (i >= 0) {
+      index[i] = dlMeta(t)
+      await dlWriteIndex(kv, index)
+    }
+  } catch {}
   dlTasksBust()
   c.executionCtx.waitUntil(dlRun(c.env, t))
   return c.json({ ok: true })
@@ -1399,8 +1448,14 @@ app.post('/api/download/tasks/:id/retry', authGuard, async (c) => {
 
 // 删除任务（运行中的任务无法中断：仅移除记录，后台会跑完且不再写回）
 app.delete('/api/download/tasks/:id', authGuard, async (c) => {
-  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储' }, 400)
-  await c.env.ACCOUNTS_KV.delete(DL_KEY_PREFIX + c.req.param('id'))
+  const kv = c.env.ACCOUNTS_KV
+  if (!kv) return c.json({ error: '未绑定 KV 存储' }, 400)
+  const id = c.req.param('id')
+  await kv.delete(DL_KEY_PREFIX + id)
+  try {
+    const index = await dlReadIndex(kv)
+    await dlWriteIndex(kv, index.filter((m) => m.id !== id))
+  } catch {}
   dlTasksBust()
   return c.json({ ok: true })
 })
@@ -1409,17 +1464,21 @@ app.delete('/api/download/tasks/:id', authGuard, async (c) => {
 app.post('/api/download/clear', authGuard, async (c) => {
   const kv = c.env.ACCOUNTS_KV
   if (!kv) return c.json({ error: '未绑定 KV 存储' }, 400)
-  const list = await kv.list({ prefix: DL_KEY_PREFIX })
-  const done = (list.keys || []).filter(
-    (k) => k.metadata && !['queued', 'running'].includes(k.metadata.status)
-  )
-  let removed = 0
-  for (const k of done.slice(0, 40)) {
-    await kv.delete(k.name)
-    removed++
+  let index = []
+  try {
+    index = await dlReadIndex(kv)
+  } catch {}
+  const done = index.filter((m) => !['queued', 'running'].includes(m.status))
+  const batch = done.slice(0, 40)
+  for (const m of batch) {
+    try { await kv.delete(DL_KEY_PREFIX + m.id) } catch {}
   }
+  const removedIds = new Set(batch.map((m) => m.id))
+  try {
+    await dlWriteIndex(kv, index.filter((m) => !removedIds.has(m.id)))
+  } catch {}
   dlTasksBust()
-  return c.json({ ok: true, removed, remaining: done.length - removed })
+  return c.json({ ok: true, removed: batch.length, remaining: done.length - batch.length })
 })
 
 // 文本预览代理（同源，避免 CDN CORS 问题）
