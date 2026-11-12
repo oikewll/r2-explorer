@@ -13,6 +13,7 @@ import MoveModal from './MoveModal'
 import RenameModal from './RenameModal'
 import CreateFolderModal from './CreateFolderModal'
 import SearchModal, { PENDING_OPEN } from './SearchModal'
+import ContextMenu, { useCtxTrigger } from './ContextMenu'
 import { DirTile, FileTile } from './GridView'
 
 function Crumbs({ crumbs, bucket }) {
@@ -85,6 +86,7 @@ export default function Explorer({ route }) {
   const [dragOver, setDragOver] = useState(false)
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('r2x_view') || 'list')
   const [searching, setSearching] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState(null)
   const fileInput = useRef(null)
   const dragCounter = useRef(0)
 
@@ -270,6 +272,82 @@ export default function Explorer({ route }) {
     }
   }
 
+  // ---------- 右键 / 长按菜单 ----------
+  // 单项菜单；若右键的项已在多选中，则展示批量操作
+  const buildItemMenu = (item) => {
+    if (selected.has(item.path) && selected.size > 1) {
+      return [
+        { icon: 'folderMove', label: `移动 ${selected.size} 项…`, onClick: () => setMoveItems(selectedItems) },
+        { icon: 'check', label: allSelected ? '取消全选' : '全选', onClick: toggleAll },
+        { sep: true },
+        { icon: 'trash', label: `删除 ${selected.size} 项`, danger: true, onClick: () => askDelete(selectedItems) },
+      ]
+    }
+    const cat = item.isDir ? null : categoryOf(item.name)
+    const menu = []
+    if (item.isDir) {
+      menu.push({ icon: 'open', label: '打开', onClick: () => navigate(bucket, item.path) })
+    } else {
+      menu.push({ icon: 'open', label: '打开 / 预览', onClick: () => openFile(item) })
+      if (cat === 'image') {
+        menu.push({
+          icon: 'edit',
+          label: '编辑图片',
+          onClick: () =>
+            setPreview({
+              mode: 'file',
+              f: item,
+              siblings: items.files.filter((x) => categoryOf(x.name) === 'image'),
+              edit: true,
+            }),
+        })
+      }
+      menu.push({ icon: 'copy', label: '复制直链', onClick: () => copyLink(item) })
+    }
+    menu.push({ icon: 'folderMove', label: '移动到…', onClick: () => setMoveItems([item]) })
+    menu.push({ icon: 'edit', label: '重命名', onClick: () => setRenameItem(item) })
+    menu.push({ sep: true })
+    menu.push({
+      icon: 'trash',
+      label: item.isDir ? '删除文件夹' : '删除文件',
+      danger: true,
+      onClick: () => askDelete([item]),
+    })
+    return menu
+  }
+
+  const openItemCtx = (item) => (x, y) => {
+    if (!selected.has(item.path)) setSelected(new Set([item.path]))
+    setCtxMenu({ x, y, items: buildItemMenu(item) })
+  }
+
+  // 空白处菜单：上传 / 新建 / 全选 / 刷新
+  const openBlankCtx = (x, y) => {
+    setCtxMenu({
+      x,
+      y,
+      items: [
+        { icon: 'upload', label: '上传文件', onClick: () => fileInput.current?.click() },
+        { icon: 'folderPlus', label: '新建文件夹', onClick: () => setCreatingFolder(true) },
+        ...(caps?.offlineDownload
+          ? [
+              {
+                icon: 'download',
+                label: '离线下载',
+                onClick: () => {
+                  setDownloadTarget({ bucket, prefix })
+                  setDownloadModalOpen(true)
+                },
+              },
+            ]
+          : []),
+        { sep: true },
+        { icon: 'check', label: allSelected ? '取消全选' : '全选', onClick: toggleAll },
+        { icon: 'refresh', label: '刷新', onClick: refresh },
+      ],
+    })
+  }
+
   if (loading && !data) {
     return <div className="py-24 text-center text-[14px] text-ink2">加载中…</div>
   }
@@ -283,6 +361,13 @@ export default function Explorer({ route }) {
   return (
     <div
       className="relative"
+      onContextMenu={(e) => {
+        // 输入框/按钮等保留浏览器原生菜单，其余空白处弹自定义菜单
+        const t = e.target
+        if (t.closest && t.closest('input, textarea, select, a, button, [contenteditable]')) return
+        e.preventDefault()
+        openBlankCtx(e.clientX, e.clientY)
+      }}
       onDragEnter={(e) => {
         if (![...e.dataTransfer.items].some((i) => i.kind === 'file')) return
         dragCounter.current++
@@ -403,6 +488,7 @@ export default function Explorer({ route }) {
               onOpen={() => navigate(bucket, d.path)}
               onRename={() => setRenameItem({ ...d, isDir: true })}
               onDelete={() => askDelete([{ ...d, isDir: true }])}
+              onCtxMenu={openItemCtx({ ...d, isDir: true })}
             />
           ))}
           {items.files.map((f) => (
@@ -415,6 +501,7 @@ export default function Explorer({ route }) {
               onOpen={() => openFile(f)}
               onRename={() => setRenameItem({ ...f, isDir: false })}
               onDelete={() => askDelete([{ ...f, isDir: false }])}
+              onCtxMenu={openItemCtx(f)}
             />
           ))}
         </div>
@@ -431,6 +518,7 @@ export default function Explorer({ route }) {
                 onOpen={() => navigate(bucket, d.path)}
                 onRename={() => setRenameItem({ ...d, isDir: true })}
                 onDelete={() => askDelete([{ ...d, isDir: true }])}
+                onCtxMenu={openItemCtx({ ...d, isDir: true })}
               />
             ))}
             {items.files.map((f) => (
@@ -444,6 +532,7 @@ export default function Explorer({ route }) {
                 onCopy={() => copyLink(f)}
                 onRename={() => setRenameItem({ ...f, isDir: false })}
                 onDelete={() => askDelete([{ ...f, isDir: false }])}
+                onCtxMenu={openItemCtx(f)}
               />
             ))}
           </div>
@@ -548,14 +637,19 @@ export default function Explorer({ route }) {
         />
       )}
       {searching && <SearchModal bucket={bucket} onClose={() => setSearching(false)} />}
+
+      {/* 右键 / 长按菜单 */}
+      <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
     </div>
   )
 }
 
-function DirRow({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete }) {
+function DirRow({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete, onCtxMenu }) {
+  const ctx = useCtxTrigger(onCtxMenu)
   return (
     <div
-      className={`group flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors sm:px-4 ${
+      {...ctx}
+      className={`ctx-target group flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors sm:px-4 ${
         selected ? 'bg-accent-soft' : 'hover:bg-bg'
       }`}
       onClick={onOpen}
@@ -578,11 +672,13 @@ function DirRow({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete
   )
 }
 
-function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onRename, onDelete }) {
+function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onRename, onDelete, onCtxMenu }) {
+  const ctx = useCtxTrigger(onCtxMenu)
   const type = iconType(f.name)
   return (
     <div
-      className={`group flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors sm:px-4 ${
+      {...ctx}
+      className={`ctx-target group flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors sm:px-4 ${
         selected ? 'bg-accent-soft' : 'hover:bg-bg'
       }`}
       onClick={onOpen}

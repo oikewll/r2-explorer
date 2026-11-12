@@ -32,7 +32,7 @@ function TBtn({ icon, title, onClick, active }) {
 
 const Sep = () => <span className="mx-1 h-4 w-px shrink-0 bg-white/20" />
 
-export default function ImageViewer({ f, url, siblings = [], setPreview, onSaved, canEdit = false }) {
+export default function ImageViewer({ f, url, siblings = [], setPreview, onSaved, canEdit = false, autoEdit = false }) {
   const boxRef = useRef(null)
   const imgRef = useRef(null)
   const gifRef = useRef(null)
@@ -49,7 +49,7 @@ export default function ImageViewer({ f, url, siblings = [], setPreview, onSaved
   const [hasAlpha, setHasAlpha] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const [exif, setExif] = useState(null)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(autoEdit) // 右键菜单「编辑图片」进来时直接进编辑器
   const [gifPaused, setGifPaused] = useState(false)
 
   const isGif = ext(f.name) === 'gif'

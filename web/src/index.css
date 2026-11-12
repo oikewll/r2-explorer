@@ -130,6 +130,13 @@ body {
   background-position: center;
 }
 
+/* 长按唤出右键菜单的目标：禁用 iOS 长按呼出/文字选中，避免和菜单手势冲突 */
+.ctx-target {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* 滚动条 */
 @utility thin-scroll {
   scrollbar-width: thin;

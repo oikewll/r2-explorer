@@ -348,6 +348,7 @@ export default function Preview({ state, onClose, onBack, setPreview, onSaved })
               setPreview={setPreview}
               onSaved={onSaved}
               canEdit
+              autoEdit={state.edit}
             />
           )}
           {cat === 'image' && mode === 'zipEntry' && (

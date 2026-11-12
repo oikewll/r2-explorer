@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { requestThumb, canThumb } from '../lib/thumbs'
 import { fmtTime } from '../lib/format'
 import { FIcon, UIcon } from './icons'
+import { useCtxTrigger } from './ContextMenu'
 
 const rawUrl = (f) => '/api/raw?bucket=' + encodeURIComponent(f.bucket) + '&key=' + encodeURIComponent(f.path)
 
@@ -93,10 +94,12 @@ function VideoThumb({ f }) {
   )
 }
 
-function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onRename, onDelete, children, meta }) {
+function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onRename, onDelete, onCtxMenu, children, meta }) {
+  const ctx = useCtxTrigger(onCtxMenu)
   return (
     <div
-      className={`group relative cursor-pointer overflow-hidden rounded-xl border transition-all ${
+      {...ctx}
+      className={`ctx-target group relative cursor-pointer overflow-hidden rounded-xl border transition-all ${
         selected ? 'border-accent bg-accent-soft ring-1 ring-accent' : 'border-line bg-bg hover:border-accent/40 hover:shadow-sm'
       }`}
       onClick={onOpen}
@@ -149,7 +152,7 @@ function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onRename, onD
   )
 }
 
-export function DirTile({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete }) {
+export function DirTile({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete, onCtxMenu }) {
   return (
     <Tile
       f={d}
@@ -160,13 +163,14 @@ export function DirTile({ d, selected, anySelected, onToggle, onOpen, onRename, 
       onOpen={onOpen}
       onRename={onRename}
       onDelete={onDelete}
+      onCtxMenu={onCtxMenu}
     >
       <FIcon type="folder" size={42} />
     </Tile>
   )
 }
 
-export function FileTile({ f, selected, anySelected, onToggle, onOpen, onRename, onDelete }) {
+export function FileTile({ f, selected, anySelected, onToggle, onOpen, onRename, onDelete, onCtxMenu }) {
   const cat = (f.name.split('.').pop() || '').toLowerCase()
   const isVideo = ['mp4', 'webm', 'm4v', 'mov'].includes(cat)
   let thumb
@@ -184,6 +188,7 @@ export function FileTile({ f, selected, anySelected, onToggle, onOpen, onRename,
       onOpen={onOpen}
       onRename={onRename}
       onDelete={onDelete}
+      onCtxMenu={onCtxMenu}
       meta={meta}
     >
       {thumb}
