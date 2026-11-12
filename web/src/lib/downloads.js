@@ -1,7 +1,14 @@
 import { api } from './api'
 import { useStore } from './store'
 
-// 服务端离线下载任务的轮询同步：有活跃任务 1.2s，空闲降到 6s（自托管本地服务，开销可忽略）
+// 服务端离线下载任务轮询：Workers KV list() 有每日配额（免费版仅 1000 次/天），
+// 有活跃任务且页面可见 1.2s；活跃但页面在后台 10s；空闲 30s；
+// 页面隐藏且无活跃任务时暂停轮询，回到前台立即恢复
+const ACTIVE_VISIBLE = 1200
+const ACTIVE_HIDDEN = 10000
+const IDLE_MS = 30000
+const ERROR_MS = 30000
+
 let timer = null
 let running = false
 
@@ -24,16 +31,26 @@ async function fetchOnce() {
   return tasks.some((t) => t.status === 'queued' || t.status === 'running')
 }
 
+function schedule(active) {
+  if (!running) return
+  // 页面隐藏且无活跃任务：暂停轮询，visibilitychange 时恢复
+  if (document.hidden && !active) return
+  const ms = active ? (document.hidden ? ACTIVE_HIDDEN : ACTIVE_VISIBLE) : IDLE_MS
+  timer = setTimeout(loop, ms)
+}
+
 function loop() {
   timer = null
   fetchOnce()
-    .then((active) => {
-      timer = setTimeout(loop, active ? 1200 : 6000)
-    })
-    .catch(() => {
-      timer = setTimeout(loop, 8000)
-    })
+    .then(schedule)
+    .catch(() => schedule(false))
 }
+
+// 回到前台且轮询处于暂停状态时立即刷新
+document.addEventListener('visibilitychange', () => {
+  if (!running || document.hidden || timer) return
+  loop()
+})
 
 // 登录后启动；登出时停止
 export function startDownloadPolling() {

@@ -36,6 +36,11 @@ function xmlPick(xml, tag) {
   return m ? decodeXml(m[1]) : ''
 }
 
+// 消费子请求响应 body：Workers 里 body 不读取也不 cancel，invoke 可能不结束、客户端响应挂起
+async function drain(res) {
+  try { await res.text() } catch {}
+}
+
 // ---------- crypto (Web Crypto, Workers-compatible) ----------
 const enc = new TextEncoder()
 
@@ -367,6 +372,7 @@ app.post('/api/buckets', authGuard, async (c) => {
     return c.json({ error: '桶名称仅支持小写字母、数字和连字符（-），3–63 个字符，且以字母或数字开头结尾' }, 400)
   }
   const res = await c._r2.fetch(`${c._s3Base}/${name}`, { method: 'PUT' })
+  await drain(res)
   if (res.ok) return c.json({ ok: true, name })
   if (res.status === 409) return c.json({ error: '同名存储桶已存在' }, 409)
   const xml = await res.text()
@@ -380,6 +386,7 @@ app.delete('/api/buckets/:name', authGuard, async (c) => {
     return c.json({ error: '桶名称格式不正确' }, 400)
   }
   const res = await c._r2.fetch(`${c._s3Base}/${name}`, { method: 'DELETE' })
+  await drain(res)
   if (res.ok) {
     await caches.default.delete(statsCacheKey(c, name))
     return c.json({ ok: true })
@@ -440,6 +447,7 @@ app.delete('/api/object', authGuard, async (c) => {
   const res = await c._r2.fetch(`${c._s3Base}/${bucket}/${key.split('/').map(encodeURIComponent).join('/')}`, {
     method: 'DELETE',
   })
+  await drain(res)
   if (!res.ok && res.status !== 204) return c.json({ error: `DeleteObject failed: ${res.status}` }, 500)
 
   // 统计缓存失效
@@ -531,6 +539,66 @@ app.post('/api/delete-tree', authGuard, async (c) => {
 })
 
 // 移动 / 重命名（CopyObject + DeleteObject，单次最多 100 个）
+// 大文件整体 CopyObject 实测 ~10MB/s（1.4GB 要 2.5 分钟），
+// 单文件时改走 multipart 分片并行拷贝（R2 支持 UploadPartCopy），分片数 ≤30 防子请求超限（免费版 50/请求）
+const COPY_MULTIPART_MIN = 64 * 1024 * 1024
+const COPY_MAX_PARTS = 30
+const COPY_CONCURRENCY = 6
+
+async function copyViaMultipart(c, toUrl, copySource, size) {
+  const init = await c._r2.fetch(`${toUrl}?uploads`, { method: 'POST' })
+  const initXml = await init.text().catch(() => '')
+  if (!init.ok) throw new Error(`multipart init failed: ${init.status}`)
+  const uploadId = xmlPick(initXml, 'UploadId')
+  if (!uploadId) throw new Error('multipart init 响应缺少 UploadId')
+  const abort = async () => {
+    try { await c._r2.fetch(`${toUrl}?uploadId=${encodeURIComponent(uploadId)}`, { method: 'DELETE' }) } catch {}
+  }
+  const partSize = Math.max(COPY_MULTIPART_MIN, Math.ceil(size / COPY_MAX_PARTS))
+  const n = Math.ceil(size / partSize)
+  const etags = new Array(n).fill(null)
+  let failed = null
+  let next = 0
+  const workers = Array.from({ length: Math.min(COPY_CONCURRENCY, n) }, async () => {
+    while (next < n && !failed) {
+      const i = next++
+      const start = i * partSize
+      const end = Math.min(start + partSize, size) - 1
+      try {
+        const res = await c._r2.fetch(
+          `${toUrl}?partNumber=${i + 1}&uploadId=${encodeURIComponent(uploadId)}`,
+          { method: 'PUT', headers: { 'x-amz-copy-source': copySource, 'x-amz-copy-source-range': `bytes=${start}-${end}` } }
+        )
+        const body = await res.text().catch(() => '')
+        if (!res.ok) { failed = `分片拷贝失败 (part ${i + 1}: ${res.status})`; break }
+        const etag = xmlPick(body, 'ETag')
+        if (!etag) { failed = `分片拷贝响应缺少 ETag (part ${i + 1})`; break }
+        etags[i] = etag
+      } catch (e) {
+        failed = e.message || `分片拷贝异常 (part ${i + 1})`
+        break
+      }
+    }
+  })
+  await Promise.all(workers)
+  if (failed) {
+    await abort()
+    throw new Error(failed)
+  }
+  const comp = await c._r2.fetch(`${toUrl}?uploadId=${encodeURIComponent(uploadId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/xml' },
+    body: `<CompleteMultipartUpload>${etags
+      .map((e, i) => `<Part><PartNumber>${i + 1}</PartNumber><ETag>${e}</ETag></Part>`)
+      .join('')}</CompleteMultipartUpload>`,
+  })
+  await comp.text().catch(() => '')
+  if (!comp.ok) {
+    await abort()
+    throw new Error(`multipart complete failed: ${comp.status}`)
+  }
+}
+
 app.post('/api/move', authGuard, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const bucket = body.bucket
@@ -548,17 +616,31 @@ app.post('/api/move', authGuard, async (c) => {
       continue
     }
     try {
-      const res = await c._r2.fetch(objUrl(c, bucket, to), {
-        method: 'PUT',
-        headers: {
-          'x-amz-copy-source': `/${bucket}/${from.split('/').map(encodeURIComponent).join('/')}`,
-        },
-      })
-      if (!res.ok) {
-        failed.push({ from, to, reason: `CopyObject failed: ${res.status}` })
-        continue
+      const toUrl = objUrl(c, bucket, to)
+      const copySource = `/${bucket}/${from.split('/').map(encodeURIComponent).join('/')}`
+      // 单文件时先 HEAD 探大小，大文件走分片并行拷贝；多文件批量保持原路径（防子请求超限）
+      let size = 0
+      if (items.length === 1) {
+        const head = await c._r2.fetch(objUrl(c, bucket, from), { method: 'HEAD' })
+        await drain(head)
+        if (head.status === 404) {
+          failed.push({ from, to, reason: '源文件不存在' })
+          continue
+        }
+        if (head.ok) size = Number(head.headers.get('content-length')) || 0
+      }
+      if (size > COPY_MULTIPART_MIN) {
+        await copyViaMultipart(c, toUrl, copySource, size)
+      } else {
+        const res = await c._r2.fetch(toUrl, { method: 'PUT', headers: { 'x-amz-copy-source': copySource } })
+        await drain(res)
+        if (!res.ok) {
+          failed.push({ from, to, reason: `CopyObject failed: ${res.status}` })
+          continue
+        }
       }
       const del = await c._r2.fetch(objUrl(c, bucket, from), { method: 'DELETE' })
+      await drain(del)
       if (!del.ok && del.status !== 204) {
         failed.push({ from, to, reason: '复制成功但删除源文件失败' })
         continue
@@ -622,6 +704,7 @@ app.post('/api/move-tree', authGuard, async (c) => {
               'x-amz-copy-source': `/${bucket}/${key.split('/').map(encodeURIComponent).join('/')}`,
             },
           })
+          await drain(cp)
           if (cp.ok) {
             copied.push(key)
             count++
@@ -643,6 +726,7 @@ app.post('/api/move-tree', authGuard, async (c) => {
           headers: { 'Content-Type': 'application/xml' },
           body: delXml,
         })
+        await drain(del)
         if (!del.ok) {
           failed.push({ from: it.from, to: it.to, reason: `DeleteObjects failed: ${del.status}` })
         }
@@ -669,6 +753,7 @@ app.post('/api/mkdir', authGuard, async (c) => {
     headers: { 'Content-Length': '0' },
     body: '',
   })
+  await drain(res)
   if (!res.ok) return c.json({ error: `PutObject failed: ${res.status}` }, 500)
   await caches.default.delete(statsCacheKey(c, bucket))
   return c.json({ ok: true, key })
@@ -1080,6 +1165,7 @@ async function dlRun(env, task) {
   const kvKey = DL_KEY_PREFIX + task.id
   const persist = async (patch) => {
     try {
+      dlTasksBust()
       const raw = await kv.get(kvKey)
       if (!raw) return // 记录已被删除（用户移除），不再写回
       const t = { ...JSON.parse(raw), ...patch }
@@ -1215,15 +1301,30 @@ app.post('/api/download/resolve', authGuard, async (c) => {
   return c.json(r)
 })
 
-// 任务列表：一次 KV list 直接读 metadata
+// 任务列表：KV list + 内存缓存（15s TTL 吸收前端轮询，省 KV list() 每日配额——免费版仅 1000 次/天）
+// 配额超限等异常时返回最近缓存，避免前端反复 500
+const DL_CACHE_TTL = 15 * 1000
+let dlTasksCache = { at: 0, tasks: [] }
+function dlTasksBust() {
+  dlTasksCache.at = 0
+}
+
 app.get('/api/download/tasks', authGuard, async (c) => {
   if (!c.env.ACCOUNTS_KV) return c.json({ tasks: [] })
-  const list = await c.env.ACCOUNTS_KV.list({ prefix: DL_KEY_PREFIX })
-  const tasks = (list.keys || [])
-    .map((k) => k.metadata)
-    .filter(Boolean)
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-  return c.json({ tasks })
+  if (Date.now() - dlTasksCache.at < DL_CACHE_TTL) {
+    return c.json({ tasks: dlTasksCache.tasks, cached: true })
+  }
+  try {
+    const list = await c.env.ACCOUNTS_KV.list({ prefix: DL_KEY_PREFIX })
+    const tasks = (list.keys || [])
+      .map((k) => k.metadata)
+      .filter(Boolean)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    dlTasksCache = { at: Date.now(), tasks }
+    return c.json({ tasks })
+  } catch (e) {
+    return c.json({ tasks: dlTasksCache.tasks, stale: true })
+  }
 })
 
 // 创建任务
@@ -1275,6 +1376,7 @@ app.post('/api/download/tasks', authGuard, async (c) => {
     finishedAt: null,
   }
   await c.env.ACCOUNTS_KV.put(DL_KEY_PREFIX + t.id, JSON.stringify(t), { metadata: dlMeta(t) })
+  dlTasksBust()
   c.executionCtx.waitUntil(dlRun(c.env, t))
   return c.json({ ok: true, task: t })
 })
@@ -1290,6 +1392,7 @@ app.post('/api/download/tasks/:id/retry', authGuard, async (c) => {
   if (t.status !== 'failed' && t.status !== 'cancelled') return c.json({ error: '该状态不可重试' }, 400)
   Object.assign(t, { status: 'queued', downloaded: 0, speed: 0, error: '', finishedAt: null })
   await kv.put(kvKey, JSON.stringify(t), { metadata: dlMeta(t) })
+  dlTasksBust()
   c.executionCtx.waitUntil(dlRun(c.env, t))
   return c.json({ ok: true })
 })
@@ -1298,6 +1401,7 @@ app.post('/api/download/tasks/:id/retry', authGuard, async (c) => {
 app.delete('/api/download/tasks/:id', authGuard, async (c) => {
   if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储' }, 400)
   await c.env.ACCOUNTS_KV.delete(DL_KEY_PREFIX + c.req.param('id'))
+  dlTasksBust()
   return c.json({ ok: true })
 })
 
@@ -1314,6 +1418,7 @@ app.post('/api/download/clear', authGuard, async (c) => {
     await kv.delete(k.name)
     removed++
   }
+  dlTasksBust()
   return c.json({ ok: true, removed, remaining: done.length - removed })
 })
 
