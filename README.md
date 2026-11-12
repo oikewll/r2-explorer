@@ -120,9 +120,9 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 文件列表工具栏的「离线下载」：粘贴 http/https 直链，服务器在后台流式下载并转存 R2（不落盘）。链接粘贴后自动探测文件名与大小（优先读 Content-Disposition），可手动改名；任务列表实时显示进度与速率，失败可重试。
 
 - **Node/Docker 版**：完整版，multipart 分片直传，约 80GB 上限，并发 2，服务重启后未完成任务标记失败可重试
-- **Workers 版**：受限版，单次流式直传，默认 100MB 上限（`OFFLINE_MAX_SIZE_MB` 可调），需绑定 `ACCOUNTS_KV`，进行中任务不可取消
+- **Workers 版**：受限版，单次流式直传，默认 100MB 上限（`OFFLINE_MAX_SIZE_MB` 可调），需绑定 `ACCOUNTS_KV`，进行中任务不可取消；受免费版 KV 每日配额约束（任务列表已做单 key 索引优化，轮询读走 get() 不占 list() 配额）
 
-详细说明与 Free/Paid 计划对比见 [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md)。
+详细说明、Free/Paid 计划对比与 KV 配额说明见 [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md)。
 
 ## API
 
