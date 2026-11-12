@@ -93,6 +93,10 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
         url,
         type,
         setting: true,
+        // v5 设置面板的内容项要单独开启，否则面板为空、点齿轮看不到任何反应
+        playbackRate: true,
+        aspectRatio: true,
+        flip: true,
         fullscreen: true,
         fullscreenWeb: true,
         pip: true,
@@ -130,6 +134,7 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
             fontSize: '15px',
           },
         }
+        opts.subtitleOffset = true
       }
       art = new Artplayer(opts)
       artRef.current = art
