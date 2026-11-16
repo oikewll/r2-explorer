@@ -49,6 +49,8 @@ wrangler secret put R2_SECRET_ACCESS_KEY
 
 `wrangler.toml` 里的 vars：`R2_ACCOUNT_ID`、`R2_CDN_MAP`（JSON，桶名 → CDN 域）。这两个作为「内置默认账号」，登录后可在界面里绑定更多账号（存 KV，见「多账号管理」）。
 
+> 免费版有 CPU 时间、**子请求数（50 次/请求）**、KV 每日配额等硬限制，批量删除/移动/离线下载等功能的额度预算见 [Workers 免费版额度说明](docs/workers-free-tier-limits.md)。
+
 ## CI/CD（GitHub Actions）
 
 打 `v*` tag 推送即自动部署 Worker（CI 会先构建前端再部署），成功/失败都会推 Telegram 通知：

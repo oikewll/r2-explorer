@@ -222,21 +222,32 @@ export default function Explorer({ route }) {
       okText: '删除',
       onOk: async () => {
         try {
+          let failCount = 0
           if (files.length) {
             for (let i = 0; i < files.length; i += 500) {
-              await api('/api/delete-batch', {
+              const r = await api('/api/delete-batch', {
                 method: 'POST',
                 body: JSON.stringify({ bucket, keys: files.slice(i, i + 500).map((f) => f.path) }),
               })
+              if (r && r.errors && r.errors.length) failCount += r.errors.length
             }
           }
           if (dirs.length) {
-            await api('/api/delete-tree', {
-              method: 'POST',
-              body: JSON.stringify({ bucket, prefixes: dirs.map((d) => d.path) }),
-            })
+            // Worker 免费版每请求最多 50 个子请求，每个前缀至少要 1 次列取 + 1 次删除，
+            // 按 10 个前缀一批分批调用，避免超限导致 500
+            for (let i = 0; i < dirs.length; i += 10) {
+              const r = await api('/api/delete-tree', {
+                method: 'POST',
+                body: JSON.stringify({
+                  bucket,
+                  prefixes: dirs.slice(i, i + 10).map((d) => d.path),
+                }),
+              })
+              if (r && r.errors && r.errors.length) failCount += r.errors.length
+            }
           }
-          toast('删除完成')
+          if (failCount) toast(`删除完成，${failCount} 项失败`, 'error')
+          else toast('删除完成')
           setSelected(new Set())
           refresh()
         } catch (e) {

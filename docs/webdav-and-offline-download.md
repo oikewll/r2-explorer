@@ -138,6 +138,8 @@ rclone mount r2x: /mnt/r2 --vfs-cache-mode writes
 
 ### Workers 平台限制来源（为什么免费版只能下小文件）
 
+> 完整的平台限制总览与其他功能（批量删除等）的额度预算见 [Workers 免费版额度说明](workers-free-tier-limits.md)。
+
 | 资源 | 免费版 | 付费版（$5/月起） | 对离线下载的影响 |
 | --- | --- | --- | --- |
 | CPU 时间/请求 | 10ms | 默认 30s，可调至 5min（等待网络不计入） | 流式转发几乎不占 CPU，但大文件仍有超限被杀（Error 1102）的风险 |

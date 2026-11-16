@@ -170,6 +170,12 @@ function parseCdnMap(input) {
 // ---------- app ----------
 const app = new Hono()
 
+// 全局兜底：未捕获异常返回 JSON 而不是裸 500（方便前端提示）
+app.onError((err, c) => {
+  console.error('Unhandled error:', err && (err.stack || err.message || err))
+  return c.json({ error: (err && err.message) || 'Internal Server Error' }, 500)
+})
+
 app.use('*', async (c, next) => {
   c._secret = c.env.AUTH_SECRET || (await deriveSecret(c.env.AUTH_PASSWORD || ''))
   c._store = await readStore(c.env)
@@ -494,7 +500,8 @@ app.post('/api/delete-tree', authGuard, async (c) => {
   const escXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   let deleted = 0
   const errors = []
-  for (const prefix of prefixes) {
+  let aborted = false // 子请求超限后继续请求只会一直失败，直接终止
+  outer: for (const prefix of prefixes) {
     let token = null
     do {
       // 分页列出该前缀下所有对象（不含 delimiter，递归含子文件夹）
@@ -503,7 +510,14 @@ app.post('/api/delete-tree', authGuard, async (c) => {
       u.searchParams.set('prefix', prefix)
       u.searchParams.set('max-keys', '1000')
       if (token) u.searchParams.set('continuation-token', token)
-      const res = await c._r2.fetch(u)
+      let res
+      try {
+        res = await c._r2.fetch(u)
+      } catch (e) {
+        errors.push({ prefix, message: 'ListObjects failed: ' + (e.message || e) })
+        if (String(e.message || e).includes('subrequest')) { aborted = true; break outer }
+        break
+      }
       if (!res.ok) {
         errors.push({ prefix, message: `ListObjects failed: ${res.status}` })
         break
@@ -516,11 +530,18 @@ app.post('/api/delete-tree', authGuard, async (c) => {
         const delXml = `<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>${batch
           .map((k) => `<Object><Key>${escXml(k)}</Key></Object>`)
           .join('')}</Delete>`
-        const del = await c._r2.fetch(`${c._s3Base}/${bucket}?delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/xml' },
-          body: delXml,
-        })
+        let del
+        try {
+          del = await c._r2.fetch(`${c._s3Base}/${bucket}?delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/xml' },
+            body: delXml,
+          })
+        } catch (e) {
+          errors.push({ prefix, message: 'DeleteObjects failed: ' + (e.message || e) })
+          if (String(e.message || e).includes('subrequest')) { aborted = true; break outer }
+          break
+        }
         if (!del.ok) {
           errors.push({ prefix, message: `DeleteObjects failed: ${del.status}` })
           continue
@@ -535,7 +556,8 @@ app.post('/api/delete-tree', authGuard, async (c) => {
     } while (token)
   }
   if (deleted > 0) await caches.default.delete(statsCacheKey(c, bucket))
-  return c.json({ ok: errors.length === 0, deleted, errors })
+  if (aborted) errors.push({ prefix: '*', message: '子请求数超限，已中止。请减少单次删除的文件夹数量' })
+  return c.json({ ok: !aborted && errors.length === 0, deleted, errors }, aborted ? 207 : 200)
 })
 
 // 移动 / 重命名（CopyObject + DeleteObject，单次最多 100 个）
