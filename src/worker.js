@@ -1096,9 +1096,10 @@ async function s3GetRange(c, bucket, key, start, end) {
 }
 
 // 能力探测：转码仅 Docker 版支持；离线下载在 Workers 免费版以受限形态支持（需绑定 KV 存任务）；
-// 在线解压需整包 WASM 解析 + 大量 PutObject，Workers 内存/CPU/子请求限制跑不了，仅 Node/Docker 版支持
+// 在线解压的后台任务模式（extract）需整包 WASM 解析 + 大量 PutObject，Workers 内存/CPU/子请求限制跑不了；
+// zip 走前端驱动的分批解压（extractBatch）：每请求解一小批，子请求/CPU 都在免费版额度内
 app.get('/api/capabilities', authGuard, (c) =>
-  c.json({ transcode: false, offlineDownload: !!c.env.ACCOUNTS_KV, extract: false })
+  c.json({ transcode: false, offlineDownload: !!c.env.ACCOUNTS_KV, extract: false, extractBatch: true })
 )
 
 // ---------- 离线下载（Workers 免费版受限实现） ----------
@@ -1631,6 +1632,93 @@ app.get('/api/zip-entry', authGuard, async (c) => {
       'Cache-Control': 'no-store',
     },
   })
+})
+
+// ---------- 在线解压·分批（zip 专用；仅 Workers 版走这里） ----------
+// Workers 内存/CPU/子请求限制跑不了后台解压任务，改由前端驱动：
+// 浏览器先 GET /api/zip 拿条目列表，再分批 POST 到这里，每批解几条写几个对象。
+// 子请求预算：每条 2 次 Range 读 + 1 次 PUT = 3，12 条一批 = 36，免费版 50 上限内留余量。
+const EXTRACT_BATCH_MAX = 12                     // 每批条目数上限
+const EXTRACT_BATCH_ENTRY_CAP = 32 * 1024 * 1024 // 单条解压上限 32MB（128MB 内存预算）
+
+app.post('/api/extract-batch', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const { bucket, key } = body
+  const target = String(body.target || '')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  const segs = target.endsWith('/') ? target.slice(0, -1).split('/') : []
+  if (
+    !target.endsWith('/') ||
+    target.startsWith('/') ||
+    !segs.length ||
+    segs.some((p) => !p || p === '.' || p === '..')
+  ) {
+    return c.json({ error: '目标目录格式不正确' }, 400)
+  }
+  const entries = Array.isArray(body.entries) ? body.entries : []
+  if (!entries.length) return c.json({ error: 'missing entries' }, 400)
+  if (entries.length > EXTRACT_BATCH_MAX) return c.json({ error: `每批最多 ${EXTRACT_BATCH_MAX} 条` }, 400)
+
+  // 包内路径消毒：防 .. 穿越写出目标目录之外（与 Node 版 sanitizeEntryName 逻辑一致）
+  const sanitize = (name) => {
+    const parts = String(name).replace(/\\/g, '/').split('/')
+    const out = []
+    for (const p of parts) {
+      if (!p || p === '.') continue
+      if (p === '..') return null
+      out.push(p)
+    }
+    return out.length ? out.join('/') : null
+  }
+
+  const done = []
+  const failed = []
+  for (const e of entries) {
+    const { name, off, csize, usize, method } = e
+    if (!name || ![off, csize, usize, method].every(Number.isFinite)) {
+      failed.push({ name: String(name || ''), error: '参数不完整' })
+      continue
+    }
+    const clean = sanitize(name)
+    if (!clean) {
+      failed.push({ name, error: '路径不安全，已跳过' })
+      continue
+    }
+    if (usize > EXTRACT_BATCH_ENTRY_CAP) {
+      failed.push({ name, error: '单文件超过 32MB，Workers 版不支持，请下载后解压' })
+      continue
+    }
+    try {
+      let data
+      if (csize === 0) {
+        data = new Uint8Array(0) // 空文件：没有数据区，Range 读 end<start 会报错
+      } else {
+        // 本地文件头 30 字节定数据区起点（与 /api/zip-entry 相同的解析路径）
+        const lh = await s3GetRange(c, bucket, key, off, off + 29)
+        const lbuf = new Uint8Array(await lh.arrayBuffer())
+        if (u32(lbuf, 0) !== 0x04034b50) throw new Error('ZIP 结构异常')
+        const dataStart = off + 30 + u16(lbuf, 26) + u16(lbuf, 28)
+        const res = await s3GetRange(c, bucket, key, dataStart, dataStart + csize - 1)
+        let stream = res.body
+        if (method === 8) stream = stream.pipeThrough(new DecompressionStream('deflate-raw'))
+        else if (method !== 0) throw new Error(`不支持的压缩算法: ${method}`)
+        data = new Uint8Array(await new Response(stream).arrayBuffer())
+        // usize 来自请求参数不完全可信，解压后实测尺寸再拦一次
+        if (data.byteLength > EXTRACT_BATCH_ENTRY_CAP) throw new Error('解压后超过 32MB，已放弃写入')
+      }
+      const dest = target + clean
+      const put = await c._r2.fetch(objUrl(c, bucket, dest), {
+        method: 'PUT',
+        headers: { 'Content-Length': String(data.byteLength) },
+        body: data,
+      })
+      if (!put.ok) throw new Error(`R2 PUT failed: ${put.status}`)
+      done.push({ name, key: dest })
+    } catch (err) {
+      failed.push({ name, error: String(err?.message || err).slice(0, 120) })
+    }
+  }
+  return c.json({ done, failed })
 })
 
 export default app

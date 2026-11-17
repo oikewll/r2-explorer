@@ -316,8 +316,8 @@ export default function Explorer({ route }) {
         })
       }
       menu.push({ icon: 'copy', label: '复制直链', onClick: () => copyLink(item) })
-      // 在线解压：仅 Node/Docker 版支持（caps.extract），且格式在支持列表内
-      if (caps?.extract && isExtractable(item.name)) {
+      // 在线解压：Node 版走后台任务（caps.extract）；Workers 版走前端驱动分批、zip 专用（caps.extractBatch）
+      if ((caps?.extract || caps?.extractBatch) && isExtractable(item.name)) {
         menu.push({ icon: 'unpack', label: '在线解压…', onClick: () => setExtractItem(item) })
       }
     }

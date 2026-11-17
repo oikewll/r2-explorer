@@ -132,7 +132,7 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 
 - 限制：单文件 ≤1GB、解压总量 ≤8GB、条目数 ≤5000（zip 无整包大小上限，rar/7z/tar.gz 整包进内存 ≤256MB）；同时最多 2 个解压任务
 - 安全：包内路径做消毒（`..` 穿越、绝对路径、反斜杠全部归一/拦截），不会写出目标目录之外
-- Workers 版不支持（内存/CPU/子请求限制），菜单项自动隐藏
+- **Workers 版**：仅支持 zip 系（zip/apk/ipa/jar/xapk/epub），单文件 ≤32MB，前端驱动分批解压（每请求一批、浏览器需保持页面打开）；rar/7z/tar.gz 仅 Node/Docker 版。注意：免费版每请求仅 10ms CPU，解压稍大的文件就会超限失败，**Workers 版实际需要付费计划（30s CPU）**；免费版建议下载后本地解压
 
 ## API
 
