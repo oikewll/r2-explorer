@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { fmtSize, fmtTime, iconType, categoryOf, copyText } from '../lib/format'
+import { fmtSize, fmtTime, iconType, categoryOf, copyText, isExtractable } from '../lib/format'
 import { navigate, buildHash } from '../lib/hash'
 import { useStore } from '../lib/store'
 import { startUpload } from '../lib/uploader'
@@ -12,6 +12,7 @@ import Confirm from './Confirm'
 import MoveModal from './MoveModal'
 import RenameModal from './RenameModal'
 import CreateFolderModal from './CreateFolderModal'
+import ExtractModal from './ExtractModal'
 import SearchModal, { PENDING_OPEN } from './SearchModal'
 import ContextMenu, { useCtxTrigger } from './ContextMenu'
 import { DirTile, FileTile } from './GridView'
@@ -83,6 +84,7 @@ export default function Explorer({ route }) {
   const [moveItems, setMoveItems] = useState(null)
   const [renameItem, setRenameItem] = useState(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
+  const [extractItem, setExtractItem] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('r2x_view') || 'list')
   const [searching, setSearching] = useState(false)
@@ -314,6 +316,10 @@ export default function Explorer({ route }) {
         })
       }
       menu.push({ icon: 'copy', label: '复制直链', onClick: () => copyLink(item) })
+      // 在线解压：仅 Node/Docker 版支持（caps.extract），且格式在支持列表内
+      if (caps?.extract && isExtractable(item.name)) {
+        menu.push({ icon: 'unpack', label: '在线解压…', onClick: () => setExtractItem(item) })
+      }
     }
     menu.push({ icon: 'folderMove', label: '移动到…', onClick: () => setMoveItems([item]) })
     menu.push({ icon: 'edit', label: '重命名', onClick: () => setRenameItem(item) })
@@ -645,6 +651,15 @@ export default function Explorer({ route }) {
             setCreatingFolder(false)
             refresh()
           }}
+        />
+      )}
+      {extractItem && (
+        <ExtractModal
+          bucket={bucket}
+          file={extractItem}
+          prefix={prefix}
+          onClose={() => setExtractItem(null)}
+          onDone={refresh}
         />
       )}
       {searching && <SearchModal bucket={bucket} onClose={() => setSearching(false)} />}

@@ -61,6 +61,23 @@ export function isNativeVideo(name) {
   return NATIVE_VIDEO_EXT.has((name.split('.').pop() || '').toLowerCase())
 }
 
+// 在线解压支持的格式：与后端 /api/zip 预览能力对应。
+// 单个 .gz（非 tar.gz）后端明确不支持，排除；zip 系容器（apk/ipa/jar/xapk/epub）本质是 zip，同样可解。
+const EXTRACTABLE_EXTS = new Set(['zip', 'apk', 'ipa', 'jar', 'xapk', 'epub', 'rar', '7z', 'tar', 'tgz'])
+export function isExtractable(name) {
+  const n = name.toLowerCase()
+  if (n.endsWith('.tar.gz')) return true
+  return EXTRACTABLE_EXTS.has(n.split('.').pop() || '')
+}
+
+// 去掉扩展名（.tar.gz 算一个整体），用于推默认解压目标目录名
+export function stripArchiveExt(name) {
+  const n = name.toLowerCase()
+  if (n.endsWith('.tar.gz')) return name.slice(0, -7)
+  const i = name.lastIndexOf('.')
+  return i > 0 ? name.slice(0, i) : name
+}
+
 export async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text)

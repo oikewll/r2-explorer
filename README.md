@@ -126,6 +126,14 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 
 详细说明、Free/Paid 计划对比与 KV 配额说明见 [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md)。
 
+## 在线解压（Node/Docker 版）
+
+文件右键菜单（移动端长按）的「在线解压」：把压缩包整包解到桶内指定目录（默认 `当前目录/压缩包名/`，可改）。服务器后台任务执行，前端轮询进度，失败条目保留明细不拖垮整体。支持 zip / rar / 7z / tar / tar.gz（apk、ipa、jar、xapk、epub 等 zip 系容器同样可解）。
+
+- 限制：单文件 ≤1GB、解压总量 ≤8GB、条目数 ≤5000（zip 无整包大小上限，rar/7z/tar.gz 整包进内存 ≤256MB）；同时最多 2 个解压任务
+- 安全：包内路径做消毒（`..` 穿越、绝对路径、反斜杠全部归一/拦截），不会写出目标目录之外
+- Workers 版不支持（内存/CPU/子请求限制），菜单项自动隐藏
+
 ## API
 
 | 方法 | 路径 | 说明 |

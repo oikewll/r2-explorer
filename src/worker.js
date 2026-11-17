@@ -1095,9 +1095,10 @@ async function s3GetRange(c, bucket, key, start, end) {
   return res
 }
 
-// 能力探测：转码仅 Docker 版支持；离线下载在 Workers 免费版以受限形态支持（需绑定 KV 存任务）
+// 能力探测：转码仅 Docker 版支持；离线下载在 Workers 免费版以受限形态支持（需绑定 KV 存任务）；
+// 在线解压需整包 WASM 解析 + 大量 PutObject，Workers 内存/CPU/子请求限制跑不了，仅 Node/Docker 版支持
 app.get('/api/capabilities', authGuard, (c) =>
-  c.json({ transcode: false, offlineDownload: !!c.env.ACCOUNTS_KV })
+  c.json({ transcode: false, offlineDownload: !!c.env.ACCOUNTS_KV, extract: false })
 )
 
 // ---------- 离线下载（Workers 免费版受限实现） ----------

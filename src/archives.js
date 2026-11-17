@@ -256,3 +256,44 @@ export function extractTar(buf, name) {
   if (!hit) return null
   return buf.subarray(hit._off, hit._off + hit._size)
 }
+
+// ---------- 整包解压（在线解压用） ----------
+// 预览是"单条目解一次"，整包解压若逐条复用那些函数，rar/7z 每条都会重新初始化 WASM 实例，
+// tar 也会重复 parseTar，条目多时慢得离谱。这里提供"一次解出全部"的版本。
+
+// rar：一次 extract({}) 全解，逐条回调（onEntry 可为 async）
+export async function extractAllRar(buf, onEntry) {
+  try {
+    const extractor = await createExtractorFromData({ data: toAB(buf) })
+    const extracted = extractor.extract({})
+    for (const f of extracted.files) {
+      // files 生成器必须遍历完，否则 WASM 内部对象不释放
+      if (!f.extraction) continue // 目录条目等没有内容
+      const name = f.fileHeader?.name ?? ''
+      if (name) await onEntry(name, Buffer.from(f.extraction))
+    }
+  } catch (e) {
+    throw archiveError(e)
+  }
+}
+
+// tar：parseTar 一次拿全部条目（数据区是 subarray 零拷贝视图）
+export function extractAllTar(buf) {
+  return parseTar(buf).map((e) => ({ name: e.name, data: buf.subarray(e._off, e._off + e._size) }))
+}
+
+// 7z：一次 x 全解到 MEMFS，再按条目名逐个读出（部分文件解压失败不拖累整体，读不到就跳过）
+export async function extractAll7z(buf, names) {
+  return with7z(buf, async (sz) => {
+    callMainSafe(sz, ['x', 'a.7z', '-y', '-p', '-o/out'])
+    const out = []
+    for (const name of names) {
+      try {
+        const data = sz.FS.readFile('/out/' + name, { encoding: 'binary' })
+        // 空文件（长度 0）也要保留：解压出来应是零字节对象，不能跳过
+        out.push({ name, data: Buffer.from(data || []) })
+      } catch {}
+    }
+    return out
+  })
+}

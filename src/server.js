@@ -26,7 +26,7 @@ import os from 'node:os'
 import zlib from 'node:zlib'
 import fs from 'node:fs'
 import path from 'node:path'
-import { detectArchiveKind, getArchiveBuffer, listRar, list7z, listTar, extractRar, extract7z, extractTar } from './archives.js'
+import { detectArchiveKind, getArchiveBuffer, listRar, list7z, listTar, extractRar, extract7z, extractTar, extractAllRar, extractAll7z, extractAllTar } from './archives.js'
 import { registerWebDAV } from './webdav.js'
 import { registerOfflineDownload } from './offline.js'
 
@@ -1138,6 +1138,253 @@ app.get('/api/zip-entry', authGuard, async (c) => {
   })
 })
 
+// ---------- 在线解压（压缩包整包解到 R2 目录；仅 Node/Docker 版） ----------
+// 后台任务模式：POST /api/extract 创建任务，前端轮询 /api/extract/status。
+// zip 走 Range 流式逐条解（整包不进内存，无 256MB 上限）；rar/7z/tar.gz 复用 archives.js 整包解析。
+const EXTRACT_MAX_JOBS = 2 // 同时进行的解压任务数
+const EXTRACT_UPLOAD_CONC = 3 // zip 分支逐条「Range 读取 + 上传」的并发
+const EXTRACT_ENTRY_MAX = 1024 * 1024 * 1024 // 单文件解压上限 1GB
+const EXTRACT_TOTAL_MAX = 8 * 1024 * 1024 * 1024 // 总解压量上限 8GB
+const EXTRACT_MAX_ENTRIES = 5000 // 条目数上限（与预览一致）
+const EXTRACT_ERRORS_MAX = 50 // 失败明细最多记录条数
+const EXTRACT_TTL = 30 * 60 * 1000 // 任务结果保留时长
+const extracts = new Map() // id -> job
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [id, j] of extracts) {
+    if ((j.status === 'done' || j.status === 'failed' || j.status === 'cancelled') && now - j.updatedAt > EXTRACT_TTL) {
+      extracts.delete(id)
+    }
+  }
+}, 60 * 1000).unref?.()
+
+function extractErr(status, message) {
+  return Object.assign(new Error(message), { status })
+}
+
+// 不依赖 Hono context 的 Range 读取（任务在响应返回后继续跑，不能持有 c）
+async function s3RangeRead(s3, bucket, key, start, end) {
+  const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key, Range: `bytes=${start}-${end}` }))
+  return Buffer.from(await obj.Body.transformToByteArray())
+}
+
+// 压缩包内路径消毒：反斜杠归一、去掉空段与 .、遇 .. 直接判不安全（防目录穿越写出桶外前缀）
+function sanitizeEntryName(name) {
+  const parts = String(name).replace(/\\/g, '/').split('/')
+  const out = []
+  for (const p of parts) {
+    if (!p || p === '.') continue
+    if (p === '..') return null
+    out.push(p)
+  }
+  return out.length ? out.join('/') : null
+}
+
+// zip 中央目录解析（逻辑与 /api/zip 尾部一致，此处独立实现避免动预览链路）
+async function zipCentralForExtract(s3, bucket, key, size) {
+  const tailLen = Math.min(size, 65536 + 65535)
+  const buf = await s3RangeRead(s3, bucket, key, size - tailLen, size - 1)
+  let eocd = -1
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (u32(buf, i) === 0x06054b50) { eocd = i; break }
+  }
+  if (eocd < 0) throw extractErr(400, '不是标准的 ZIP 格式')
+  const count = u16(buf, eocd + 10)
+  const cdSize = u32(buf, eocd + 12)
+  const cdOffset = u32(buf, eocd + 16)
+  if (count === 0xffff || cdOffset === 0xffffffff) throw extractErr(400, '暂不支持 ZIP64 格式')
+  const cbuf = await s3RangeRead(s3, bucket, key, cdOffset, cdOffset + cdSize - 1)
+  const entries = []
+  let dirCount = 0
+  let p = 0
+  while (p + 46 <= cbuf.length && entries.length < Math.min(count, EXTRACT_MAX_ENTRIES)) {
+    if (u32(cbuf, p) !== 0x02014b50) break
+    const method = u16(cbuf, p + 10)
+    const compSize = u32(cbuf, p + 20)
+    const uncompSize = u32(cbuf, p + 24)
+    const nameLen = u16(cbuf, p + 28)
+    const extraLen = u16(cbuf, p + 30)
+    const commentLen = u16(cbuf, p + 32)
+    const offset = u32(cbuf, p + 42)
+    const name = cbuf.subarray(p + 46, p + 46 + nameLen).toString('utf8')
+    if (!name.endsWith('/')) entries.push({ name, method, compSize, uncompSize, offset })
+    else dirCount++
+    p += 46 + nameLen + extraLen + commentLen
+  }
+  return { entries, fileTotal: count - dirCount }
+}
+
+async function runExtract(job, s3) {
+  const addError = (name, msg) => {
+    if (job.errors.length < EXTRACT_ERRORS_MAX) job.errors.push(`${name}: ${String(msg).slice(0, 120)}`)
+  }
+  const record = async (name, data) => {
+    if (job.status !== 'running') return // 任务被取消
+    const clean = sanitizeEntryName(name)
+    if (!clean) {
+      job.failed++
+      addError(name, '路径不安全，已跳过')
+      return
+    }
+    if (data.length > EXTRACT_ENTRY_MAX) {
+      job.failed++
+      addError(name, '单文件超过 1GB，已跳过')
+      return
+    }
+    try {
+      await s3.send(
+        new PutObjectCommand({ Bucket: job.bucket, Key: job.target + clean, Body: data, ContentLength: data.length })
+      )
+      job.done++
+    } catch (e) {
+      job.failed++
+      addError(name, e?.message || e)
+    }
+    job.updatedAt = Date.now()
+  }
+
+  try {
+    const head = await s3RangeRead(s3, job.bucket, job.key, 0, Math.min(job.size, 512) - 1)
+    const kind0 = detectArchiveKind(head)
+
+    if (kind0 === 'rar' || kind0 === '7z' || kind0 === 'tar' || kind0 === 'gzip') {
+      // 整包型：先列条目做量级校验，再一次解出全部逐条上传（串行即可，瓶颈在上传）
+      const { buf, kind } = await getArchiveBuffer(s3, job.bucket, job.key, job.size)
+      const list = kind === 'rar' ? await listRar(buf) : kind === '7z' ? await list7z(buf) : listTar(buf)
+      if (list.length > EXTRACT_MAX_ENTRIES) throw extractErr(400, `压缩包内文件超过 ${EXTRACT_MAX_ENTRIES} 个，请下载后本地解压`)
+      const totalBytes = list.reduce((s, e) => s + (e.uncompSize || 0), 0)
+      if (totalBytes > EXTRACT_TOTAL_MAX) {
+        throw extractErr(400, `解压总量超过 ${Math.round(EXTRACT_TOTAL_MAX / 1024 / 1024 / 1024)}GB，请下载后本地解压`)
+      }
+      job.total = list.length
+      if (kind === 'rar') {
+        await extractAllRar(buf, async (name, data) => record(name, data))
+      } else if (kind === 'tar') {
+        for (const e of extractAllTar(buf)) await record(e.name, e.data)
+      } else {
+        const all = await extractAll7z(buf, list.map((e) => e.name))
+        for (const e of all) await record(e.name, e.data)
+      }
+    } else {
+      // zip：流式逐条 Range 读取 + 解压 + 上传，3 路并发
+      const { entries, fileTotal } = await zipCentralForExtract(s3, job.bucket, job.key, job.size)
+      if (fileTotal > EXTRACT_MAX_ENTRIES) throw extractErr(400, `压缩包内文件超过 ${EXTRACT_MAX_ENTRIES} 个，请下载后本地解压`)
+      const totalBytes = entries.reduce((s, e) => s + (e.uncompSize || 0), 0)
+      if (totalBytes > EXTRACT_TOTAL_MAX) {
+        throw extractErr(400, `解压总量超过 ${Math.round(EXTRACT_TOTAL_MAX / 1024 / 1024 / 1024)}GB，请下载后本地解压`)
+      }
+      job.total = entries.length
+      let idx = 0
+      const worker = async () => {
+        while (idx < entries.length && job.status === 'running') {
+          const e = entries[idx++]
+          try {
+            let data
+            if (e.compSize === 0) {
+              data = Buffer.alloc(0) // 空文件：没有数据区，Range 读 end<start 会报错
+            } else {
+              const lbuf = await s3RangeRead(s3, job.bucket, job.key, e.offset, e.offset + 29)
+              if (u32(lbuf, 0) !== 0x04034b50) throw extractErr(400, 'ZIP 结构异常')
+              const dataStart = e.offset + 30 + u16(lbuf, 26) + u16(lbuf, 28)
+              data = await s3RangeRead(s3, job.bucket, job.key, dataStart, dataStart + e.compSize - 1)
+              if (e.method === 8) data = zlib.inflateRawSync(data)
+              else if (e.method !== 0) throw extractErr(400, `不支持的压缩算法: ${e.method}`)
+            }
+            await record(e.name, data)
+          } catch (err2) {
+            job.failed++
+            addError(e.name, err2?.message || err2)
+          }
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(EXTRACT_UPLOAD_CONC, entries.length) || 1 }, worker))
+    }
+    if (job.status === 'running') {
+      job.status = job.failed && !job.done ? 'failed' : 'done'
+      job.message = job.failed ? `${job.failed} 个文件解压失败，其余已完成` : ''
+    }
+  } catch (e) {
+    job.status = 'failed'
+    job.error = String(e?.message || e).slice(0, 300)
+  }
+  job.updatedAt = Date.now()
+}
+
+app.post('/api/extract', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const { bucket, key } = body
+  const target = String(body.target || '')
+  if (!bucket || !key) return c.json({ error: 'missing bucket/key' }, 400)
+  const segs = target.endsWith('/') ? target.slice(0, -1).split('/') : []
+  if (
+    !target.endsWith('/') ||
+    target.startsWith('/') ||
+    !segs.length ||
+    segs.some((p) => !p || p === '.' || p === '..')
+  ) {
+    return c.json({ error: '目标目录格式不正确' }, 400)
+  }
+  let size
+  try {
+    const head = await c._s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+    size = head.ContentLength
+  } catch (e) {
+    const code = e?.$metadata?.httpStatusCode
+    if (code === 404 || e.name === 'NotFound') return c.json({ error: 'not found' }, 404)
+    return c.json({ error: `HEAD failed: ${code || e.message}` }, 500)
+  }
+  let running = 0
+  for (const j of extracts.values()) if (j.status === 'running') running++
+  if (running >= EXTRACT_MAX_JOBS) return c.json({ error: '服务器已有解压任务在进行，请稍后再试' }, 429)
+
+  const id = crypto.randomUUID()
+  const job = {
+    id,
+    bucket,
+    key,
+    target,
+    size,
+    status: 'running',
+    total: 0,
+    done: 0,
+    failed: 0,
+    errors: [],
+    message: '',
+    error: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+  extracts.set(id, job)
+  // s3 client 在任务启动前取出：响应返回后 Hono context 不可再依赖
+  const s3 = c._s3
+  runExtract(job, s3).catch((e) => {
+    job.status = 'failed'
+    job.error = String(e?.message || e).slice(0, 300)
+    job.updatedAt = Date.now()
+  })
+  return c.json({ id })
+})
+
+app.get('/api/extract/status', authGuard, (c) => {
+  const id = c.req.query('id')
+  const job = extracts.get(id)
+  if (!job) return c.json({ error: '任务不存在或已过期' }, 404)
+  const { status, total, done, failed, message, error, errors, target } = job
+  return c.json({ status, total, done, failed, message, error, errors, target })
+})
+
+app.post('/api/extract/cancel', authGuard, async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const job = extracts.get(String(body.id || ''))
+  if (job && job.status === 'running') {
+    job.status = 'cancelled'
+    job.updatedAt = Date.now()
+    return c.json({ ok: true })
+  }
+  return c.json({ ok: false })
+})
+
 // ---------- 视频转码（仅 Node/Docker 版支持；Workers 无法运行 ffmpeg） ----------
 // mkv/avi 等浏览器不能直放的格式 → ffmpeg 转 HLS，边转边播（event 模式）
 let ffmpegOk = null
@@ -1180,7 +1427,7 @@ function transcodeGC() {
 }
 setInterval(transcodeGC, 60 * 1000).unref?.()
 
-app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: hasFFmpeg(), offlineDownload: true }))
+app.get('/api/capabilities', authGuard, (c) => c.json({ transcode: hasFFmpeg(), offlineDownload: true, extract: true }))
 
 app.post('/api/transcode/start', authGuard, async (c) => {
   if (!hasFFmpeg()) return c.json({ error: '服务器未安装 ffmpeg，无法转码在线播放' }, 501)
