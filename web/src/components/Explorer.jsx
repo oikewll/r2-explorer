@@ -71,6 +71,7 @@ export default function Explorer({ route }) {
   const setDownloadModalOpen = useStore((s) => s.setDownloadModalOpen)
   const setDownloadTarget = useStore((s) => s.setDownloadTarget)
   const downloadsVersion = useStore((s) => s.downloadsVersion)
+  const uploadsVersion = useStore((s) => s.uploadsVersion)
   const [caps, setCaps] = useState(null)
   const [data, setData] = useState(null) // { crumbs, dirs, files }
   const [loading, setLoading] = useState(false)
@@ -168,6 +169,12 @@ export default function Explorer({ route }) {
     if (downloadsVersion > 0) refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [downloadsVersion])
+
+  // 手动重试的上传任务完成时刷新目录
+  useEffect(() => {
+    if (uploadsVersion > 0) refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadsVersion])
 
   const items = useMemo(() => {
     if (!data) return { dirs: [], files: [] }

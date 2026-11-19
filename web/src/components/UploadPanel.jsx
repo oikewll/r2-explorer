@@ -1,5 +1,5 @@
 import { useStore } from '../lib/store'
-import { cancelUpload } from '../lib/uploader'
+import { cancelUpload, retryUpload, clearFinishedUploads } from '../lib/uploader'
 import { fmtSize } from '../lib/format'
 import { UIcon } from './icons'
 
@@ -22,14 +22,25 @@ function TaskRow({ task }) {
           >
             取消
           </button>
+        ) : failed ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-[12px] text-danger" title={task.error || ''}>失败</span>
+            <button
+              className="text-[12px] font-medium text-accent hover:underline"
+              title={task.uploadId ? '从已上传的分片继续' : '重新上传'}
+              onClick={() => retryUpload(task)}
+            >
+              重试
+            </button>
+          </div>
         ) : (
           <span
             className={`shrink-0 text-[12px] font-medium ${
-              done ? 'text-emerald-600' : failed ? 'text-danger' : 'text-ink2'
+              done ? 'text-emerald-600' : 'text-ink2'
             }`}
             title={task.error || ''}
           >
-            {done ? '完成' : failed ? '失败' : cancelled ? '已取消' : '等待中'}
+            {done ? '完成' : cancelled ? '已取消' : '等待中'}
           </span>
         )}
       </div>
@@ -39,7 +50,7 @@ function TaskRow({ task }) {
             className={`h-full rounded-full transition-[width] duration-200 ${
               failed ? 'bg-danger' : done ? 'bg-emerald-500' : 'bg-accent'
             }`}
-            style={{ width: (done || failed ? 100 : task.pct) + '%' }}
+            style={{ width: (done ? 100 : task.pct) + '%' }}
           />
         </div>
         <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-ink2">
@@ -60,7 +71,6 @@ export default function UploadPanel() {
   const uploads = useStore((s) => s.uploads)
   const open = useStore((s) => s.uploadPanelOpen)
   const setOpen = useStore((s) => s.setUploadPanelOpen)
-  const clearFinished = useStore((s) => s.clearFinishedUploads)
   const playerVisible = useStore((s) => s.player.visible)
 
   if (!uploads.length || !open) return null
@@ -79,7 +89,7 @@ export default function UploadPanel() {
         </div>
         <div className="flex items-center gap-1">
           {allDone && (
-            <button className="text-[12px] text-ink2 hover:text-ink" onClick={clearFinished}>
+            <button className="text-[12px] text-ink2 hover:text-ink" onClick={clearFinishedUploads}>
               清空
             </button>
           )}

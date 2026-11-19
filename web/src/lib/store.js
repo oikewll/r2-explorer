@@ -41,6 +41,8 @@ export const useStore = create((set) => ({
     set((s) => ({ uploads: s.uploads.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
   clearFinishedUploads: () =>
     set((s) => ({ uploads: s.uploads.filter((t) => !['done', 'fail', 'cancelled'].includes(t.status)) })),
+  uploadsVersion: 0, // 手动重试等独立上传任务完成时 +1（Explorer 据此刷新目录）
+  bumpUploadsVersion: () => set((s) => ({ uploadsVersion: s.uploadsVersion + 1 })),
 
   // 离线下载（服务端任务，轮询同步）
   downloads: [],
