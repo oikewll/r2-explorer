@@ -171,6 +171,21 @@ const UI_PATHS = {
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </>
   ),
+  // 二维码：三个定位角 + 右下数据点阵
+  qr: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M5.5 5.5h2v2h-2z" fill="currentColor" stroke="none" />
+      <path d="M16.5 5.5h2v2h-2z" fill="currentColor" stroke="none" />
+      <path d="M5.5 16.5h2v2h-2z" fill="currentColor" stroke="none" />
+      <path d="M14 14h3v3h-3z" />
+      <path d="M20 14h1" />
+      <path d="M14 20h3" />
+      <path d="M20 20h1" />
+    </>
+  ),
   edit: <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />,
   trash: (
     <>

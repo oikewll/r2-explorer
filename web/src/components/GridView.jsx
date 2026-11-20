@@ -94,7 +94,7 @@ function VideoThumb({ f }) {
   )
 }
 
-function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onRename, onDelete, onCtxMenu, children, meta }) {
+function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onQr, onRename, onDelete, onCtxMenu, children, meta }) {
   const ctx = useCtxTrigger(onCtxMenu)
   return (
     <div
@@ -116,6 +116,18 @@ function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onRename, onD
       />
       {/* 右上角操作 */}
       <div className="absolute right-1.5 top-1.5 z-10 flex gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
+        {!isDir && onQr && (
+          <button
+            title="生成二维码（手机扫码打开）"
+            className="rounded-lg bg-bg/85 p-1.5 text-ink2 backdrop-blur transition hover:bg-ink/[0.08] hover:text-ink"
+            onClick={(e) => {
+              e.stopPropagation()
+              onQr()
+            }}
+          >
+            <UIcon name="qr" size={14} />
+          </button>
+        )}
         {!isDir && (
           <button
             title="重命名"
@@ -170,7 +182,7 @@ export function DirTile({ d, selected, anySelected, onToggle, onOpen, onRename, 
   )
 }
 
-export function FileTile({ f, selected, anySelected, onToggle, onOpen, onRename, onDelete, onCtxMenu }) {
+export function FileTile({ f, selected, anySelected, onToggle, onOpen, onQr, onRename, onDelete, onCtxMenu }) {
   const cat = (f.name.split('.').pop() || '').toLowerCase()
   const isVideo = ['mp4', 'webm', 'm4v', 'mov'].includes(cat)
   let thumb
@@ -186,6 +198,7 @@ export function FileTile({ f, selected, anySelected, onToggle, onOpen, onRename,
       anySelected={anySelected}
       onToggle={onToggle}
       onOpen={onOpen}
+      onQr={onQr}
       onRename={onRename}
       onDelete={onDelete}
       onCtxMenu={onCtxMenu}

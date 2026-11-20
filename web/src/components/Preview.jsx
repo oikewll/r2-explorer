@@ -78,7 +78,7 @@ function CodeBody({ text, name }) {
   )
 }
 
-function TopBar({ title, url, onBack, onClose, dark }) {
+function TopBar({ title, url, onBack, onClose, onQr, dark }) {
   return (
     <div
       className={`flex shrink-0 items-center gap-1 px-3 py-2 ${
@@ -103,6 +103,15 @@ function TopBar({ title, url, onBack, onClose, dark }) {
         >
           <UIcon name="download" size={16} />
         </a>
+      )}
+      {onQr && (
+        <button
+          className={`icon-btn ${dark ? 'hover:bg-white/10 hover:text-white' : ''}`}
+          onClick={onQr}
+          title="生成二维码（手机扫码打开）"
+        >
+          <UIcon name="qr" size={16} />
+        </button>
       )}
       <button className={`icon-btn ${dark ? 'hover:bg-white/10 hover:text-white' : ''}`} onClick={onClose} title="关闭">
         <UIcon name="close" size={17} />
@@ -277,7 +286,7 @@ function ZipBody({ f, kind, entries, total, truncated, onEntry, onClose, onBack 
   )
 }
 
-export default function Preview({ state, onClose, onBack, setPreview, onSaved }) {
+export default function Preview({ state, onClose, onBack, setPreview, onSaved, onQr, qrOpen }) {
   const { mode } = state
   const dark = mode !== 'zip' && ['file', 'zipEntry'].includes(mode)
   const cat = state.f ? categoryOf(state.f.name) : null
@@ -286,6 +295,8 @@ export default function Preview({ state, onClose, onBack, setPreview, onSaved })
   useEffect(() => {
     const fn = (e) => {
       if (e.key === 'Escape') {
+        // 二维码弹窗开着时，把 Esc 让给它自己处理，不要连预览一起关掉
+        if (qrOpen) return
         e.stopImmediatePropagation()
         if (mode === 'zipEntry') onBack()
         else onClose()
@@ -293,7 +304,7 @@ export default function Preview({ state, onClose, onBack, setPreview, onSaved })
     }
     document.addEventListener('keydown', fn, true)
     return () => document.removeEventListener('keydown', fn, true)
-  }, [mode])
+  }, [mode, qrOpen, onBack, onClose])
 
   const loadEntryText = async (f, e, kind) => {
     const res = await fetch(entryUrl(f, kind, e, false))
@@ -336,6 +347,12 @@ export default function Preview({ state, onClose, onBack, setPreview, onSaved })
           dark={cat !== 'text' && cat !== 'pdf'}
           title={mode === 'zipEntry' ? state.entry.name : state.f.name}
           url={mediaUrl}
+          // 压缩包内条目走 /api/* 相对路径，手机扫码打不开，只对绝对直链提供二维码
+          onQr={
+            mode === 'file' && /^https?:\/\//i.test(mediaUrl)
+              ? () => onQr?.({ name: state.f.name, url: mediaUrl, presigned: state.f.presigned })
+              : null
+          }
           onBack={mode === 'zipEntry' ? onBack : null}
           onClose={onClose}
         />

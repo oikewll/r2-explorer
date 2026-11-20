@@ -16,6 +16,7 @@ import ExtractModal from './ExtractModal'
 import SearchModal, { PENDING_OPEN } from './SearchModal'
 import ContextMenu, { useCtxTrigger } from './ContextMenu'
 import { DirTile, FileTile } from './GridView'
+import QrModal from './QrModal'
 
 function Crumbs({ crumbs, bucket }) {
   return (
@@ -90,6 +91,7 @@ export default function Explorer({ route }) {
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('r2x_view') || 'list')
   const [searching, setSearching] = useState(false)
   const [ctxMenu, setCtxMenu] = useState(null)
+  const [qrItem, setQrItem] = useState(null) // 二维码弹窗：{ name, url, presigned }
   const fileInput = useRef(null)
   const dragCounter = useRef(0)
 
@@ -276,6 +278,9 @@ export default function Explorer({ route }) {
     toast(ok ? '直链已复制' : '复制失败', ok ? 'info' : 'error')
   }
 
+  // 生成二维码：内容就是文件直链（CDN 直链或 7 天预签名直链），手机扫码即可打开 / 下载
+  const openQr = (f) => setQrItem({ name: f.name, url: f.url, presigned: f.presigned })
+
   // 音频文件直接进播放器队列（路由切换不断播）；视频带兄弟列表用于连续剧连播；zip 内的媒体仍走预览弹窗
   const openFile = (f) => {
     const cat = categoryOf(f.name)
@@ -323,6 +328,7 @@ export default function Explorer({ route }) {
         })
       }
       menu.push({ icon: 'copy', label: '复制直链', onClick: () => copyLink(item) })
+      menu.push({ icon: 'qr', label: '二维码 / 扫码打开', onClick: () => openQr(item) })
       // 在线解压：Node 版走后台任务（caps.extract）；Workers 版走前端驱动分批、zip 专用（caps.extractBatch）
       if ((caps?.extract || caps?.extractBatch) && isExtractable(item.name)) {
         menu.push({ icon: 'unpack', label: '在线解压…', onClick: () => setExtractItem(item) })
@@ -386,9 +392,9 @@ export default function Explorer({ route }) {
     <div
       className="relative"
       onContextMenu={(e) => {
-        // 输入框/按钮等保留浏览器原生菜单，其余空白处弹自定义菜单
+        // 输入框/按钮/弹窗内保留浏览器原生菜单（二维码可右键保存），其余空白处弹自定义菜单
         const t = e.target
-        if (t.closest && t.closest('input, textarea, select, a, button, [contenteditable]')) return
+        if (t.closest && t.closest('input, textarea, select, a, button, [contenteditable], .modal-overlay')) return
         e.preventDefault()
         openBlankCtx(e.clientX, e.clientY)
       }}
@@ -523,6 +529,7 @@ export default function Explorer({ route }) {
               anySelected={selected.size > 0}
               onToggle={() => toggleSelect(f.path)}
               onOpen={() => openFile(f)}
+              onQr={() => openQr(f)}
               onRename={() => setRenameItem({ ...f, isDir: false })}
               onDelete={() => askDelete([{ ...f, isDir: false }])}
               onCtxMenu={openItemCtx(f)}
@@ -554,6 +561,7 @@ export default function Explorer({ route }) {
                 onToggle={() => toggleSelect(f.path)}
                 onOpen={() => openFile(f)}
                 onCopy={() => copyLink(f)}
+                onQr={() => openQr(f)}
                 onRename={() => setRenameItem({ ...f, isDir: false })}
                 onDelete={() => askDelete([{ ...f, isDir: false }])}
                 onCtxMenu={openItemCtx(f)}
@@ -620,6 +628,8 @@ export default function Explorer({ route }) {
           onBack={() => setPreview((p) => (p.mode === 'zipEntry' ? { mode: 'zip', f: p.f, entries: p.entries, total: p.total, truncated: p.truncated } : null))}
           setPreview={setPreview}
           onSaved={refresh}
+          onQr={(item) => setQrItem(item)}
+          qrOpen={!!qrItem}
         />
       )}
       {confirm && <Confirm {...confirm} onClose={() => setConfirm(null)} />}
@@ -670,6 +680,7 @@ export default function Explorer({ route }) {
         />
       )}
       {searching && <SearchModal bucket={bucket} onClose={() => setSearching(false)} />}
+      {qrItem && <QrModal item={qrItem} onClose={() => setQrItem(null)} />}
 
       {/* 右键 / 长按菜单 */}
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
@@ -705,7 +716,7 @@ function DirRow({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete
   )
 }
 
-function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onRename, onDelete, onCtxMenu }) {
+function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onQr, onRename, onDelete, onCtxMenu }) {
   const ctx = useCtxTrigger(onCtxMenu)
   const type = iconType(f.name)
   return (
@@ -732,6 +743,7 @@ function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onRename,
       <div className="hidden w-32 shrink-0 text-right text-[12.5px] text-ink2/80 lg:block">{fmtTime(f.modified)}</div>
       <div className="flex shrink-0 items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
         <RowAction title="复制直链" icon="copy" onClick={onCopy} />
+        <RowAction title="生成二维码（手机扫码打开）" icon="qr" onClick={onQr} />
         <RowAction title="重命名" icon="edit" onClick={onRename} />
         <RowAction title="删除文件" icon="trash" onClick={onDelete} danger />
       </div>

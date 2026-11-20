@@ -110,6 +110,15 @@ body {
   @apply truncate text-[15px] font-semibold;
 }
 
+/* 二维码 canvas：qrcode 库会写入内联 width/height（默认 1024px），
+   用 !important 把显示尺寸收回父容器；canvas 位图仍是 1024px，
+   保存的 PNG 依旧高清，扫码也更清晰 */
+.qr-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  image-rendering: pixelated;
+}
+
 /* 透明图片预览的棋盘格底（查看器恒为深色，用深色棋盘） */
 .img-checker {
   background-color: #1e222a;
