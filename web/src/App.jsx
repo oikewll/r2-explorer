@@ -16,6 +16,7 @@ import DownloadModal from './components/DownloadModal'
 import MiniPlayer from './components/MiniPlayer'
 import FullPlayer from './components/FullPlayer'
 import Toasts from './components/Toasts'
+import Footer from './components/Footer'
 
 export default function App() {
   const authed = useStore((s) => s.authed)
@@ -54,13 +55,14 @@ export default function App() {
   return (
     <div className="min-h-dvh">
       <Header route={route} />
-      <main className="mx-auto max-w-[920px] px-4 pb-28 pt-4">
+      <main className="mx-auto max-w-[920px] px-4 pb-4 pt-4">
         {route.bucket ? (
           <Explorer key={route.bucket + '/' + route.prefix} route={route} />
         ) : (
           <Buckets />
         )}
       </main>
+      <Footer />
       {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
       {createBucketOpen && (
         <CreateBucket

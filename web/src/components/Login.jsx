@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
 import { FIcon } from './icons'
+import Footer from './Footer'
 
 export default function Login({ onOk }) {
   const [pwd, setPwd] = useState('')
@@ -25,7 +26,7 @@ export default function Login({ onOk }) {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center p-6">
+    <div className="flex min-h-dvh flex-col items-center justify-center p-6">
       <form onSubmit={submit} className="card pop-in w-full max-w-[360px] p-10 text-center">
         <div className="flex justify-center">
           <FIcon type="bucket" size={56} />
@@ -45,6 +46,7 @@ export default function Login({ onOk }) {
           {busy ? '登录中…' : '登 录'}
         </button>
       </form>
+      <Footer className="mt-8 pb-0" />
     </div>
   )
 }
