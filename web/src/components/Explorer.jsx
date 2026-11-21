@@ -379,27 +379,50 @@ export default function Explorer({ route }) {
   }
 
   // ---------- PC 鼠标框选（类似 Windows 资源管理器） ----------
-  // 按住左键拖拽画出选择框，命中的行/卡片即被选中；行/卡片上也可以直接起拖；
+  // 页面任意空白（内容区、两侧留白）和行/卡片上都可以按住左键拖拽框选；
   // 按住 Ctrl/Cmd 拖拽则在已有选择上追加；空白处单击清空选择。
   const listWrapRef = useRef(null)
   const [marquee, setMarquee] = useState(null) // 相对列表容器的 { x, y, w, h }
   const dragSel = useRef(null)
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
 
-  const onListPointerDown = (e) => {
-    if (e.button !== 0 || e.pointerType !== 'mouse') return
-    const t = e.target
-    // 只避开按钮/checkbox/输入框等交互元素，行/卡片本体允许起拖
-    if (t.closest && t.closest('input, textarea, select, button, a, [contenteditable]')) return
-    if (!listWrapRef.current) return
-    dragSel.current = {
-      sx: e.clientX,
-      sy: e.clientY,
-      cur: { x: e.clientX, y: e.clientY },
-      base: e.ctrlKey || e.metaKey ? new Set(selected) : null,
-      active: false,
+  useEffect(() => {
+    // pointerdown 挂在 document 上，这样页面两侧留白也能起拖；
+    // 只避开交互元素、顶栏和一切浮层（弹窗/播放器/菜单都是 fixed/modal-overlay）
+    const onDown = (e) => {
+      if (e.button !== 0 || e.pointerType !== 'mouse') return
+      const t = e.target
+      if (!t.closest) return
+      if (t.closest('input, textarea, select, button, a, [contenteditable], header, .fixed, .modal-overlay')) return
+      // 滚动条/页面根节点上不起拖（避免破坏滚动条拖拽）
+      if (t === document.documentElement || t === document.body) return
+      if (!listWrapRef.current) return
+      dragSel.current = {
+        sx: e.clientX,
+        sy: e.clientY,
+        cur: { x: e.clientX, y: e.clientY },
+        base: e.ctrlKey || e.metaKey ? new Set(selectedRef.current) : null,
+        active: false,
+        prevUserSelect: document.body.style.userSelect,
+      }
+      document.body.style.userSelect = 'none'
     }
-    e.preventDefault()
-  }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [])
+
+  // Esc 取消选择（输入框聚焦时交给输入框自己处理）
+  useEffect(() => {
+    const fn = (e) => {
+      if (e.key !== 'Escape') return
+      const ae = document.activeElement
+      if (ae && ae.closest && ae.closest('input, textarea, select, [contenteditable]')) return
+      setSelected((s) => (s.size ? new Set() : s))
+    }
+    document.addEventListener('keydown', fn)
+    return () => document.removeEventListener('keydown', fn)
+  }, [])
 
   useEffect(() => {
     // 从行/卡片上起拖并真正进入框选后，浏览器会补发一个 click 落在原行上，
@@ -457,8 +480,6 @@ export default function Explorer({ route }) {
       if (!ds.active) {
         if (Math.abs(ds.cur.x - ds.sx) < 4 && Math.abs(ds.cur.y - ds.sy) < 4) return
         ds.active = true
-        ds.prevUserSelect = document.body.style.userSelect
-        document.body.style.userSelect = 'none'
         killNextClick()
         ds.raf = requestAnimationFrame(autoScroll)
       }
@@ -470,10 +491,9 @@ export default function Explorer({ route }) {
       dragSel.current = null
       setMarquee(null)
       if (!ds) return
-      if (ds.active) {
-        cancelAnimationFrame(ds.raf)
-        document.body.style.userSelect = ds.prevUserSelect || ''
-      } else if (!ds.base) {
+      cancelAnimationFrame(ds.raf)
+      document.body.style.userSelect = ds.prevUserSelect || ''
+      if (!ds.active && !ds.base) {
         // 空白处单击：清空选择（Ctrl+单击不清，与 Windows 一致）
         setSelected(new Set())
       }
@@ -623,8 +643,8 @@ export default function Explorer({ route }) {
         </div>
       )}
 
-      {/* 文件列表（PC 支持鼠标左键框选） */}
-      <div ref={listWrapRef} className="relative" onPointerDown={onListPointerDown}>
+      {/* 文件列表（PC 支持鼠标左键框选，页面空白处亦可起拖） */}
+      <div ref={listWrapRef} className="relative">
         {empty ? (
           <div className="card flex flex-col items-center px-6 py-16 text-center text-[14px] text-ink2">
             <FIcon type="folder" size={56} />
