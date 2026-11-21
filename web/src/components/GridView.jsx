@@ -99,6 +99,7 @@ function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onQr, onRenam
   return (
     <div
       {...ctx}
+      data-select-path={f.path}
       className={`ctx-target group relative cursor-pointer overflow-hidden rounded-xl border transition-all ${
         selected ? 'border-accent bg-accent-soft ring-1 ring-accent' : 'border-line bg-bg hover:border-accent/40 hover:shadow-sm'
       }`}

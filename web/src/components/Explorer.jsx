@@ -378,6 +378,117 @@ export default function Explorer({ route }) {
     })
   }
 
+  // ---------- PC 鼠标框选（类似 Windows 资源管理器） ----------
+  // 空白处按住左键拖拽画出选择框，命中的行/卡片即被选中；
+  // 按住 Ctrl/Cmd 拖拽则在已有选择上追加；空白处单击清空选择。
+  const listWrapRef = useRef(null)
+  const [marquee, setMarquee] = useState(null) // 相对列表容器的 { x, y, w, h }
+  const dragSel = useRef(null)
+
+  const onListPointerDown = (e) => {
+    if (e.button !== 0 || e.pointerType !== 'mouse') return
+    const t = e.target
+    // 行/卡片/按钮等交互元素上不启动框选（避免干扰点击、拖拽上传等）
+    if (t.closest && t.closest('.ctx-target, input, textarea, select, button, a, [contenteditable]')) return
+    if (!listWrapRef.current) return
+    dragSel.current = {
+      sx: e.clientX,
+      sy: e.clientY,
+      cur: { x: e.clientX, y: e.clientY },
+      base: e.ctrlKey || e.metaKey ? new Set(selected) : null,
+      active: false,
+    }
+    e.preventDefault()
+  }
+
+  useEffect(() => {
+    const applySelection = (ds) => {
+      const wrap = listWrapRef.current
+      if (!wrap) return
+      const wrapRect = wrap.getBoundingClientRect()
+      const left = Math.min(ds.sx, ds.cur.x)
+      const top = Math.min(ds.sy, ds.cur.y)
+      const w = Math.abs(ds.cur.x - ds.sx)
+      const h = Math.abs(ds.cur.y - ds.sy)
+      setMarquee({ x: left - wrapRect.left, y: top - wrapRect.top, w, h })
+      const mr = { left, top, right: left + w, bottom: top + h }
+      const hit = new Set()
+      wrap.querySelectorAll('[data-select-path]').forEach((el) => {
+        const r = el.getBoundingClientRect()
+        if (r.left < mr.right && r.right > mr.left && r.top < mr.bottom && r.bottom > mr.top) {
+          hit.add(el.dataset.selectPath)
+        }
+      })
+      setSelected((prev) => {
+        if (!ds.base) return hit
+        const n = new Set(ds.base)
+        hit.forEach((p) => n.add(p))
+        return n
+      })
+    }
+
+    // 指针贴近视口上下边缘时持续滚动，方便选跨屏的大量文件
+    const autoScroll = () => {
+      const ds = dragSel.current
+      if (!ds || !ds.active) return
+      const edge = 60
+      if (ds.cur.y < edge) window.scrollBy(0, -Math.ceil((edge - ds.cur.y) / 3))
+      else if (ds.cur.y > window.innerHeight - edge) window.scrollBy(0, Math.ceil((ds.cur.y - (window.innerHeight - edge)) / 3))
+      applySelection(ds)
+      ds.raf = requestAnimationFrame(autoScroll)
+    }
+
+    const onMove = (e) => {
+      const ds = dragSel.current
+      if (!ds) return
+      ds.cur = { x: e.clientX, y: e.clientY }
+      if (!ds.active) {
+        if (Math.abs(ds.cur.x - ds.sx) < 4 && Math.abs(ds.cur.y - ds.sy) < 4) return
+        ds.active = true
+        ds.prevUserSelect = document.body.style.userSelect
+        document.body.style.userSelect = 'none'
+        ds.raf = requestAnimationFrame(autoScroll)
+      }
+      e.preventDefault()
+      applySelection(ds)
+    }
+    const onUp = () => {
+      const ds = dragSel.current
+      dragSel.current = null
+      setMarquee(null)
+      if (!ds) return
+      if (ds.active) {
+        cancelAnimationFrame(ds.raf)
+        document.body.style.userSelect = ds.prevUserSelect || ''
+      } else if (!ds.base) {
+        // 空白处单击：清空选择（Ctrl+单击不清，与 Windows 一致）
+        setSelected(new Set())
+      }
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [])
+
+  // Ctrl/Cmd + A 全选（输入框内除外）
+  useEffect(() => {
+    const fn = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        const t = e.target
+        if (t.closest && t.closest('input, textarea, select, [contenteditable]')) return
+        e.preventDefault()
+        setSelected(new Set(allPaths))
+      }
+    }
+    document.addEventListener('keydown', fn)
+    return () => document.removeEventListener('keydown', fn)
+  }, [allPaths])
+
   if (loading && !data) {
     return <div className="py-24 text-center text-[14px] text-ink2">加载中…</div>
   }
@@ -499,48 +610,18 @@ export default function Explorer({ route }) {
         </div>
       )}
 
-      {/* 文件列表 */}
-      {empty ? (
-        <div className="card flex flex-col items-center px-6 py-16 text-center text-[14px] text-ink2">
-          <FIcon type="folder" size={56} />
-          <div className="mt-3">这个目录是空的</div>
-          <div className="mt-1 text-[13px] text-ink2/70">拖拽文件到这里，或点击上方「上传」</div>
-        </div>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
-          {items.dirs.map((d) => (
-            <DirTile
-              key={d.path}
-              d={d}
-              selected={selected.has(d.path)}
-              anySelected={selected.size > 0}
-              onToggle={() => toggleSelect(d.path)}
-              onOpen={() => navigate(bucket, d.path)}
-              onRename={() => setRenameItem({ ...d, isDir: true })}
-              onDelete={() => askDelete([{ ...d, isDir: true }])}
-              onCtxMenu={openItemCtx({ ...d, isDir: true })}
-            />
-          ))}
-          {items.files.map((f) => (
-            <FileTile
-              key={f.path}
-              f={{ ...f, _iconType: iconType(f.name) }}
-              selected={selected.has(f.path)}
-              anySelected={selected.size > 0}
-              onToggle={() => toggleSelect(f.path)}
-              onOpen={() => openFile(f)}
-              onQr={() => openQr(f)}
-              onRename={() => setRenameItem({ ...f, isDir: false })}
-              onDelete={() => askDelete([{ ...f, isDir: false }])}
-              onCtxMenu={openItemCtx(f)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="card overflow-hidden">
-          <div className="divide-y divide-line/70">
+      {/* 文件列表（PC 支持鼠标左键框选） */}
+      <div ref={listWrapRef} className="relative" onPointerDown={onListPointerDown}>
+        {empty ? (
+          <div className="card flex flex-col items-center px-6 py-16 text-center text-[14px] text-ink2">
+            <FIcon type="folder" size={56} />
+            <div className="mt-3">这个目录是空的</div>
+            <div className="mt-1 text-[13px] text-ink2/70">拖拽文件到这里，或点击上方「上传」</div>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
             {items.dirs.map((d) => (
-              <DirRow
+              <DirTile
                 key={d.path}
                 d={d}
                 selected={selected.has(d.path)}
@@ -553,9 +634,9 @@ export default function Explorer({ route }) {
               />
             ))}
             {items.files.map((f) => (
-              <FileRow
+              <FileTile
                 key={f.path}
-                f={f}
+                f={{ ...f, _iconType: iconType(f.name) }}
                 selected={selected.has(f.path)}
                 anySelected={selected.size > 0}
                 onToggle={() => toggleSelect(f.path)}
@@ -568,8 +649,47 @@ export default function Explorer({ route }) {
               />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="divide-y divide-line/70">
+              {items.dirs.map((d) => (
+                <DirRow
+                  key={d.path}
+                  d={d}
+                  selected={selected.has(d.path)}
+                  anySelected={selected.size > 0}
+                  onToggle={() => toggleSelect(d.path)}
+                  onOpen={() => navigate(bucket, d.path)}
+                  onRename={() => setRenameItem({ ...d, isDir: true })}
+                  onDelete={() => askDelete([{ ...d, isDir: true }])}
+                  onCtxMenu={openItemCtx({ ...d, isDir: true })}
+                />
+              ))}
+              {items.files.map((f) => (
+                <FileRow
+                  key={f.path}
+                  f={f}
+                  selected={selected.has(f.path)}
+                  anySelected={selected.size > 0}
+                  onToggle={() => toggleSelect(f.path)}
+                  onOpen={() => openFile(f)}
+                  onCopy={() => copyLink(f)}
+                  onRename={() => setRenameItem({ ...f, isDir: false })}
+                  onDelete={() => askDelete([{ ...f, isDir: false }])}
+                  onCtxMenu={openItemCtx(f)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        {/* 框选矩形 */}
+        {marquee && (
+          <div
+            className="pointer-events-none absolute z-30 rounded-sm border border-accent bg-accent/20"
+            style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }}
+          />
+        )}
+      </div>
 
       {/* 拖放遮罩 */}
       {dragOver && (
@@ -693,6 +813,7 @@ function DirRow({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete
   return (
     <div
       {...ctx}
+      data-select-path={d.path}
       className={`ctx-target group flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors sm:px-4 ${
         selected ? 'bg-accent-soft' : 'hover:bg-bg'
       }`}
@@ -722,6 +843,7 @@ function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onQr, onR
   return (
     <div
       {...ctx}
+      data-select-path={f.path}
       className={`ctx-target group flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors sm:px-4 ${
         selected ? 'bg-accent-soft' : 'hover:bg-bg'
       }`}
