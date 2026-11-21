@@ -379,7 +379,7 @@ export default function Explorer({ route }) {
   }
 
   // ---------- PC 鼠标框选（类似 Windows 资源管理器） ----------
-  // 空白处按住左键拖拽画出选择框，命中的行/卡片即被选中；
+  // 按住左键拖拽画出选择框，命中的行/卡片即被选中；行/卡片上也可以直接起拖；
   // 按住 Ctrl/Cmd 拖拽则在已有选择上追加；空白处单击清空选择。
   const listWrapRef = useRef(null)
   const [marquee, setMarquee] = useState(null) // 相对列表容器的 { x, y, w, h }
@@ -388,8 +388,8 @@ export default function Explorer({ route }) {
   const onListPointerDown = (e) => {
     if (e.button !== 0 || e.pointerType !== 'mouse') return
     const t = e.target
-    // 行/卡片/按钮等交互元素上不启动框选（避免干扰点击、拖拽上传等）
-    if (t.closest && t.closest('.ctx-target, input, textarea, select, button, a, [contenteditable]')) return
+    // 只避开按钮/checkbox/输入框等交互元素，行/卡片本体允许起拖
+    if (t.closest && t.closest('input, textarea, select, button, a, [contenteditable]')) return
     if (!listWrapRef.current) return
     dragSel.current = {
       sx: e.clientX,
@@ -402,6 +402,18 @@ export default function Explorer({ route }) {
   }
 
   useEffect(() => {
+    // 从行/卡片上起拖并真正进入框选后，浏览器会补发一个 click 落在原行上，
+    // 会误触“打开”，全局拦掉这一个
+    const killNextClick = () => {
+      const kill = (e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        window.removeEventListener('click', kill, true)
+      }
+      window.addEventListener('click', kill, true)
+      setTimeout(() => window.removeEventListener('click', kill, true), 450)
+    }
+
     const applySelection = (ds) => {
       const wrap = listWrapRef.current
       if (!wrap) return
@@ -447,6 +459,7 @@ export default function Explorer({ route }) {
         ds.active = true
         ds.prevUserSelect = document.body.style.userSelect
         document.body.style.userSelect = 'none'
+        killNextClick()
         ds.raf = requestAnimationFrame(autoScroll)
       }
       e.preventDefault()
