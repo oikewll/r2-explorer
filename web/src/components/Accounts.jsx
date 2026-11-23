@@ -7,7 +7,7 @@ import Modal from './Modal'
 import Confirm from './Confirm'
 import { UIcon } from './icons'
 
-const EMPTY_FORM = { id: '', name: '', accountId: '', accessKeyId: '', secretAccessKey: '', cdnMap: '' }
+const EMPTY_FORM = { id: '', name: '', accountId: '', accessKeyId: '', secretAccessKey: '', apiToken: '', cdnMap: '' }
 
 export default function Accounts({ onClose }) {
   const toast = useStore((s) => s.toast)
@@ -31,6 +31,7 @@ export default function Accounts({ onClose }) {
       accountId: a.accountId,
       accessKeyId: '',
       secretAccessKey: '',
+      apiToken: '',
       cdnMap: a.cdnMap && Object.keys(a.cdnMap).length ? JSON.stringify(a.cdnMap) : '',
     })
     setError('')
@@ -45,6 +46,7 @@ export default function Accounts({ onClose }) {
         accountId: form.accountId,
         accessKeyId: form.accessKeyId,
         secretAccessKey: form.secretAccessKey,
+        apiToken: form.apiToken,
         cdnMap: form.cdnMap,
       }
       if (form.id) {
@@ -130,6 +132,18 @@ export default function Accounts({ onClose }) {
               onChange={(e) => setForm({ ...form, secretAccessKey: e.target.value })}
             />
           </Field>
+          <Field
+            label="CF API Token"
+            hint="可选，仅用于识别免费/付费套餐；需「Account Subscriptions: Read」权限"
+          >
+            <input
+              className="input font-mono text-[13px]"
+              type="password"
+              value={form.apiToken}
+              placeholder={form.id && !form.apiToken ? '留空则不修改' : 'Cloudflare 账号级 API Token（区别于 R2 令牌）'}
+              onChange={(e) => setForm({ ...form, apiToken: e.target.value })}
+            />
+          </Field>
           <Field label="CDN 映射" hint='JSON，如 {"my-bucket":"https://cdn.example.com"}；"*" 匹配所有桶。没映射的桶用 7 天预签名直链'>
             <textarea
               className="input min-h-[72px] resize-y font-mono text-[13px]"
@@ -174,6 +188,7 @@ export default function Accounts({ onClose }) {
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-ink2">
                   <span className="font-mono">{a.accountId}</span>
                   {a.keyMask && <span className="font-mono">Key {a.keyMask}</span>}
+                  {a.hasApiToken && <span>API Token 已配置</span>}
                   {a.cdnMap && Object.keys(a.cdnMap).length > 0 && (
                     <span>CDN 映射 {Object.keys(a.cdnMap).length} 条</span>
                   )}

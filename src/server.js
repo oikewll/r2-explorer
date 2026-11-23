@@ -35,6 +35,7 @@ const {
   R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY,
+  R2_API_TOKEN,
   R2_PUBLIC_URL,
   R2_CDN_MAP,
   AUTH_PASSWORD,
@@ -82,6 +83,7 @@ function envAccount() {
     accountId: R2_ACCOUNT_ID,
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
+    apiToken: R2_API_TOKEN || '',
     cdnMap: map,
     builtin: true,
   }
@@ -102,6 +104,7 @@ function sanitizeAccount(a) {
     name: a.name,
     accountId: a.accountId,
     keyMask: key ? key.slice(0, 4) + '****' + key.slice(-2) : '',
+    hasApiToken: !!a.apiToken,
     cdnMap: a.cdnMap || {},
     builtin: !!a.builtin,
     createdAt: a.createdAt,
@@ -294,6 +297,7 @@ app.post('/api/accounts', authGuard, async (c) => {
     accountId,
     accessKeyId,
     secretAccessKey,
+    apiToken: String(body.apiToken || '').trim(),
     cdnMap: map.value,
     createdAt: new Date().toISOString(),
   }
@@ -302,7 +306,7 @@ app.post('/api/accounts', authGuard, async (c) => {
   return c.json({ ok: true, id: acc.id })
 })
 
-// 编辑账号（名称 / CDN 映射 / 密钥；密钥留空表示不修改）
+// 编辑账号（名称 / CDN 映射 / 密钥 / API Token；密钥和 Token 留空表示不修改）
 app.put('/api/accounts/:id', authGuard, async (c) => {
   const acc = store.accounts.find((a) => a.id === c.req.param('id'))
   if (!acc) return c.json({ error: '账号不存在' }, 404)
@@ -317,6 +321,9 @@ app.put('/api/accounts/:id', authGuard, async (c) => {
     const map = parseCdnMap(body.cdnMap)
     if (map.error) return c.json({ error: map.error }, 400)
     acc.cdnMap = map.value
+  }
+  if (body.apiToken !== undefined && String(body.apiToken).trim()) {
+    acc.apiToken = String(body.apiToken).trim()
   }
   const ak = String(body.accessKeyId || '').trim()
   const sk = String(body.secretAccessKey || '').trim()
@@ -354,12 +361,58 @@ app.post('/api/accounts/:id/activate', authGuard, async (c) => {
   return c.json({ ok: true })
 })
 
+// ---------- 套餐识别（免费版 / 付费版，需账号配置了 CF API Token） ----------
+// R2 免费额度：10 GB 存储/月（官方定价）；付费版同样含 10 GB 免费额度，超出按量计费无硬上限
+const R2_FREE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024
+const PLAN_TTL_MS = 10 * 60 * 1000
+const planCache = new Map() // accountId -> { plan, subs, expires }
+
+// 用 CF API Token 查询账号订阅，判断免费/付费
+async function fetchPlan(acc) {
+  const cached = planCache.get(acc.accountId)
+  if (cached && cached.expires > Date.now()) return cached.data
+
+  let data
+  if (!acc.apiToken) {
+    data = { plan: 'unknown', reason: 'no-token' }
+  } else {
+    try {
+      const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${acc.accountId}/subscriptions`, {
+        headers: { Authorization: `Bearer ${acc.apiToken}` },
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.success) {
+        const msg = json?.errors?.[0]?.message || `HTTP ${res.status}`
+        data = { plan: 'unknown', reason: 'api-error', error: `查询订阅失败：${msg}` }
+      } else {
+        const subs = (json.result || []).map((s) => ({
+          id: s.id || '',
+          name: s.product?.name || s.product_id || (typeof s.rate_plan === 'string' ? s.rate_plan : s.rate_plan?.id) || '',
+        }))
+        // 有付费订阅（如 Workers Paid，R2 付费用量挂在其下）即付费版
+        const paid = subs.some((s) => /paid/i.test(s.name))
+        data = { plan: paid ? 'paid' : 'free', subs, freeQuota: R2_FREE_QUOTA_BYTES }
+      }
+    } catch (e) {
+      data = { plan: 'unknown', reason: 'api-error', error: `查询订阅失败：${e.message || e}` }
+    }
+  }
+  // 失败结果缓存 1 分钟，避免每次请求都打 CF API；成功缓存 10 分钟
+  const ttl = data.plan === 'unknown' ? 60 * 1000 : PLAN_TTL_MS
+  planCache.set(acc.accountId, { data, expires: Date.now() + ttl })
+  return data
+}
+
+app.get('/api/plan', authGuard, async (c) => {
+  return c.json(await fetchPlan(c._account))
+})
+
 // ---------- 桶统计（内存缓存 1 小时，按账号隔离） ----------
 const STATS_TTL_MS = 3600 * 1000
-const statsCache = new Map() // `${accountId}:${bucket}` -> { stats, expires }
+const statsCache = new Map() // `${accountId}:${bucket}:v2` -> { stats, expires }
 
 function getCachedStats(c, bucket) {
-  const key = `${c._account?.id || 'env'}:${bucket}`
+  const key = `${c._account?.id || 'env'}:${bucket}:v2`
   const hit = statsCache.get(key)
   if (hit && hit.expires > Date.now()) return hit.stats
   if (hit) statsCache.delete(key)
@@ -367,14 +420,33 @@ function getCachedStats(c, bucket) {
 }
 
 function invalidateStats(c, bucket) {
-  statsCache.delete(`${c._account?.id || 'env'}:${bucket}`)
+  statsCache.delete(`${c._account?.id || 'env'}:${bucket}:v2`)
+}
+
+// 按扩展名粗分类，供首页存储统计面板使用
+const TYPE_EXTS = {
+  image: new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'heic', 'tif', 'tiff']),
+  video: new Set(['mp4', 'webm', 'm4v', 'mov', 'mkv', 'avi', 'flv', 'wmv', 'mpg', 'mpeg', '3gp', 'ts', 'ogv', 'm2ts']),
+  audio: new Set(['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'ape', 'amr']),
+  document: new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'epub', 'mobi', 'azw3', 'log', 'json', 'xml', 'yml', 'yaml', 'html', 'htm']),
+}
+function typeOfKey(key) {
+  const ext = (key.split('.').pop() || '').toLowerCase()
+  if (TYPE_EXTS.image.has(ext)) return 'image'
+  if (TYPE_EXTS.video.has(ext)) return 'video'
+  if (TYPE_EXTS.audio.has(ext)) return 'audio'
+  if (TYPE_EXTS.document.has(ext)) return 'document'
+  return 'other'
+}
+function newByType() {
+  return { image: { count: 0, size: 0 }, video: { count: 0, size: 0 }, audio: { count: 0, size: 0 }, document: { count: 0, size: 0 }, other: { count: 0, size: 0 } }
 }
 
 // 列出账号下所有 R2 桶（附带缓存的统计信息）
 app.get('/api/buckets', authGuard, async (c) => {
   const res = await c._s3.send(new ListBucketsCommand({}))
   const names = (res.Buckets || []).map((b) => b.Name).filter(Boolean).sort()
-  const buckets = names.map((name) => ({ name, stats: getCachedStats(name) }))
+  const buckets = names.map((name) => ({ name, stats: getCachedStats(c, name) }))
   return c.json({ buckets })
 })
 
@@ -428,6 +500,7 @@ app.get('/api/stats', authGuard, async (c) => {
   let objects = 0
   let size = 0
   let lastModified = null
+  const byType = newByType()
   let token
   do {
     const res = await c._s3.send(
@@ -439,7 +512,11 @@ app.get('/api/stats', authGuard, async (c) => {
     )
     for (const o of res.Contents || []) {
       objects++
-      size += o.Size || 0
+      const sz = o.Size || 0
+      size += sz
+      const t = typeOfKey(o.Key || '')
+      byType[t].count++
+      byType[t].size += sz
       const lm = o.LastModified ? new Date(o.LastModified).toISOString() : null
       if (lm && (!lastModified || lm > lastModified)) lastModified = lm
     }
@@ -452,6 +529,7 @@ app.get('/api/stats', authGuard, async (c) => {
     sizeText: formatSize(size),
     lastModified,
     modifiedText: lastModified ? formatTime(lastModified) : null,
+    byType,
     computedAt: new Date().toISOString(),
   }
   statsCache.set(`${c._account?.id || 'env'}:${bucket}`, { stats, expires: Date.now() + STATS_TTL_MS })

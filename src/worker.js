@@ -95,6 +95,7 @@ function envAccount(env) {
     accountId: env.R2_ACCOUNT_ID,
     accessKeyId: env.R2_ACCESS_KEY_ID,
     secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    apiToken: env.R2_API_TOKEN || '',
     cdnMap: map,
     builtin: true,
   }
@@ -130,6 +131,7 @@ function sanitizeAccount(a) {
     name: a.name,
     accountId: a.accountId,
     keyMask: key ? key.slice(0, 4) + '****' + key.slice(-2) : '',
+    hasApiToken: !!a.apiToken,
     cdnMap: a.cdnMap || {},
     builtin: !!a.builtin,
     createdAt: a.createdAt,
@@ -270,6 +272,7 @@ app.post('/api/accounts', authGuard, async (c) => {
     accountId,
     accessKeyId,
     secretAccessKey,
+    apiToken: String(body.apiToken || '').trim(),
     cdnMap: map.value,
     createdAt: new Date().toISOString(),
   }
@@ -295,6 +298,9 @@ app.put('/api/accounts/:id', authGuard, async (c) => {
     const map = parseCdnMap(body.cdnMap)
     if (map.error) return c.json({ error: map.error }, 400)
     acc.cdnMap = map.value
+  }
+  if (body.apiToken !== undefined && String(body.apiToken).trim()) {
+    acc.apiToken = String(body.apiToken).trim()
   }
   const ak = String(body.accessKeyId || '').trim()
   const sk = String(body.secretAccessKey || '').trim()
@@ -336,12 +342,59 @@ app.post('/api/accounts/:id/activate', authGuard, async (c) => {
   return c.json({ ok: true })
 })
 
+// ---------- 套餐识别（免费版 / 付费版，需账号配置了 CF API Token） ----------
+// R2 免费额度：10 GB 存储/月（官方定价）；付费版同样含 10 GB 免费额度，超出按量计费无硬上限
+const R2_FREE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024
+
+async function fetchPlan(c) {
+  const acc = c._account
+  const cacheKey = new Request(`https://r2x-cache.internal/plan/${encodeURIComponent(acc.accountId)}`)
+  const cached = await caches.default.match(cacheKey)
+  if (cached) return cached.json()
+
+  let data
+  if (!acc.apiToken) {
+    data = { plan: 'unknown', reason: 'no-token' }
+  } else {
+    try {
+      const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${acc.accountId}/subscriptions`, {
+        headers: { Authorization: `Bearer ${acc.apiToken}` },
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.success) {
+        const msg = json?.errors?.[0]?.message || `HTTP ${res.status}`
+        data = { plan: 'unknown', reason: 'api-error', error: `查询订阅失败：${msg}` }
+      } else {
+        const subs = (json.result || []).map((s) => ({
+          id: s.id || '',
+          name: s.product?.name || s.product_id || (typeof s.rate_plan === 'string' ? s.rate_plan : s.rate_plan?.id) || '',
+        }))
+        // 有付费订阅（如 Workers Paid，R2 付费用量挂在其下）即付费版
+        const paid = subs.some((s) => /paid/i.test(s.name))
+        data = { plan: paid ? 'paid' : 'free', subs, freeQuota: R2_FREE_QUOTA_BYTES }
+      }
+    } catch (e) {
+      data = { plan: 'unknown', reason: 'api-error', error: `查询订阅失败：${e.message || e}` }
+    }
+  }
+  // 成功缓存 10 分钟，失败缓存 1 分钟
+  await caches.default.put(
+    cacheKey,
+    new Response(JSON.stringify(data), {
+      headers: { 'Cache-Control': data.plan === 'unknown' ? 'public, max-age=60' : 'public, max-age=600' },
+    })
+  )
+  return data
+}
+
+app.get('/api/plan', authGuard, async (c) => c.json(await fetchPlan(c)))
+
 // ---------- 桶统计缓存（Cache API，1 小时） ----------
 const STATS_TTL = 3600
-// 缓存 key 按账号隔离，避免不同账号的同名桶串缓存
+// 缓存 key 按账号隔离，避免不同账号的同名桶串缓存；v2 含 byType 分类统计
 const statsCacheKey = (c, bucket) =>
   new Request(
-    `https://r2x-cache.internal/stats/${encodeURIComponent(c._account?.id || 'env')}/${encodeURIComponent(bucket)}`
+    `https://r2x-cache.internal/stats/v2/${encodeURIComponent(c._account?.id || 'env')}/${encodeURIComponent(bucket)}`
   )
 
 async function getCachedStats(c, bucket) {
@@ -356,6 +409,25 @@ async function putCachedStats(c, bucket, stats) {
       headers: { 'Cache-Control': `public, max-age=${STATS_TTL}` },
     })
   )
+}
+
+// 按扩展名粗分类，供首页存储统计面板使用（与 server.js 保持一致）
+const TYPE_EXTS = {
+  image: new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'heic', 'tif', 'tiff']),
+  video: new Set(['mp4', 'webm', 'm4v', 'mov', 'mkv', 'avi', 'flv', 'wmv', 'mpg', 'mpeg', '3gp', 'ts', 'ogv', 'm2ts']),
+  audio: new Set(['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'ape', 'amr']),
+  document: new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'epub', 'mobi', 'azw3', 'log', 'json', 'xml', 'yml', 'yaml', 'html', 'htm']),
+}
+function typeOfKey(key) {
+  const ext = (key.split('.').pop() || '').toLowerCase()
+  if (TYPE_EXTS.image.has(ext)) return 'image'
+  if (TYPE_EXTS.video.has(ext)) return 'video'
+  if (TYPE_EXTS.audio.has(ext)) return 'audio'
+  if (TYPE_EXTS.document.has(ext)) return 'document'
+  return 'other'
+}
+function newByType() {
+  return { image: { count: 0, size: 0 }, video: { count: 0, size: 0 }, audio: { count: 0, size: 0 }, document: { count: 0, size: 0 }, other: { count: 0, size: 0 } }
 }
 
 // 列出账号下所有 R2 桶（附带缓存的统计信息）
@@ -414,6 +486,7 @@ app.get('/api/stats', authGuard, async (c) => {
   let objects = 0
   let size = 0
   let lastModified = null
+  const byType = newByType()
   let token = null
   do {
     const u = new URL(`${c._s3Base}/${bucket}`)
@@ -424,7 +497,11 @@ app.get('/api/stats', authGuard, async (c) => {
     const xml = await res.text()
     for (const obj of xmlBlocks(xml, 'Contents')) {
       objects++
-      size += Number(xmlPick(obj, 'Size')) || 0
+      const sz = Number(xmlPick(obj, 'Size')) || 0
+      size += sz
+      const t = typeOfKey(xmlPick(obj, 'Key') || '')
+      byType[t].count++
+      byType[t].size += sz
       const lm = xmlPick(obj, 'LastModified')
       if (lm && (!lastModified || lm > lastModified)) lastModified = lm
     }
@@ -437,6 +514,7 @@ app.get('/api/stats', authGuard, async (c) => {
     sizeText: formatSize(size),
     lastModified,
     modifiedText: lastModified ? formatTime(lastModified) : null,
+    byType,
     computedAt: new Date().toISOString(),
   }
   await putCachedStats(c, bucket, stats)

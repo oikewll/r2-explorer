@@ -36,7 +36,7 @@ export default function Header({ route }) {
 
   return (
     <header className="sticky top-0 z-30 border-b border-line/80 bg-bg/85 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-[920px] items-center gap-2 px-4">
+      <div className={'mx-auto flex h-14 items-center gap-2 px-4 ' + (route.bucket ? 'max-w-[920px]' : 'max-w-[1140px]')}>
         <button
           className="flex items-center gap-2.5 rounded-[10px] font-semibold text-[16px] hover:opacity-80 transition"
           onClick={() => navigate('', '')}

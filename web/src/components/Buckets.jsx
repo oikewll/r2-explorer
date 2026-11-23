@@ -6,6 +6,7 @@ import { loadAccountsAndBuckets } from '../lib/loader'
 import { useStore } from '../lib/store'
 import { FIcon, UIcon } from './icons'
 import DeleteBucket from './DeleteBucket'
+import StoragePanel from './StoragePanel'
 
 function BucketCard({ bucket, index, onDelete }) {
   const [stats, setStats] = useState(bucket.stats || null)
@@ -64,30 +65,38 @@ export default function Buckets() {
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-[17px] font-semibold">存储桶</h1>
-        <button className="btn-primary" onClick={() => setCreateBucketOpen(true)}>
-          <UIcon name="plus" size={15} />
-          新建存储桶
-        </button>
-      </div>
-      {buckets.length === 0 ? (
-        <div className="card flex flex-col items-center px-6 py-16 text-center text-[14px] text-ink2">
-          <FIcon type="bucket" size={56} />
-          <div className="mt-3 leading-relaxed">
-            账号下没有找到 R2 存储桶
-            <br />
-            点击右上角「新建存储桶」创建一个
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-5">
+      {/* 左栏：存储统计 */}
+      <aside className="w-full shrink-0 lg:w-[300px]">
+        <StoragePanel buckets={buckets} />
+      </aside>
+
+      {/* 右栏：存储桶列表 */}
+      <div className="min-w-0 flex-1">
+        <div className="mb-4 flex items-center justify-between">
+          <h1 className="text-[17px] font-semibold">存储桶</h1>
+          <button className="btn-primary" onClick={() => setCreateBucketOpen(true)}>
+            <UIcon name="plus" size={15} />
+            新建存储桶
+          </button>
+        </div>
+        {buckets.length === 0 ? (
+          <div className="card flex flex-col items-center px-6 py-16 text-center text-[14px] text-ink2">
+            <FIcon type="bucket" size={56} />
+            <div className="mt-3 leading-relaxed">
+              账号下没有找到 R2 存储桶
+              <br />
+              点击右上角「新建存储桶」创建一个
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {buckets.map((b, i) => (
-            <BucketCard key={b.name} bucket={b} index={i} onDelete={setDeleteTarget} />
-          ))}
-        </div>
-      )}
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {buckets.map((b, i) => (
+              <BucketCard key={b.name} bucket={b} index={i} onDelete={setDeleteTarget} />
+            ))}
+          </div>
+        )}
+      </div>
       {deleteTarget && (
         <DeleteBucket
           bucket={deleteTarget}

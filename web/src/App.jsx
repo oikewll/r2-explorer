@@ -55,7 +55,7 @@ export default function App() {
   return (
     <div className="min-h-dvh">
       <Header route={route} />
-      <main className="mx-auto max-w-[920px] px-4 pb-4 pt-4">
+      <main className={'mx-auto px-4 pb-4 pt-4 ' + (route.bucket ? 'max-w-[920px]' : 'max-w-[1140px]')}>
         {route.bucket ? (
           <Explorer key={route.bucket + '/' + route.prefix} route={route} />
         ) : (
