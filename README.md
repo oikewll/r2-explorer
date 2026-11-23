@@ -135,6 +135,42 @@ r2-explorer uninstall --purge     # 卸载（--purge 连本地配置一起删）
 2. LuCI 左侧「服务」菜单 → **R2 Explorer 网盘**：可配置端口、镜像版本、登录密码、内置 R2 账号环境变量与自定义环境变量，点「重启服务」即按配置重建容器
 3. 也可以 SSH 执行 `r2-explorer install` 启动（CLI 与 LuCI 共用 UCI 配置）
 
+### 方式三：手动构建 + 局域网离线同步
+
+适用场景：软路由拉不动 ghcr.io（DNS 污染、OpenClash 不接管路由器自身流量、纯内网环境），或想在发版前跑自己的改动。原理是**在另一台机器上构建镜像，通过局域网 `docker save | docker load` 直传**，完全不依赖软路由的外网。
+
+前提：一台装了 Docker 的电脑（Mac / Linux / Windows 均可），与软路由在同一局域网且能 SSH。
+
+```bash
+# 1. 克隆仓库并检出目标版本
+git clone https://github.com/oikewll/r2-explorer.git
+cd r2-explorer
+git checkout v2.17.0              # 或 main 跟踪最新代码
+
+# 2. 本地构建镜像
+#    精简版用 -f Dockerfile.slim；完整版用 -f Dockerfile
+#    tag 建议带上版本号，方便软路由上区分
+docker build -f Dockerfile.slim -t ghcr.io/oikewll/r2-explorer:v2.17.0-slim .
+
+# 3. （可选）构建前先在镜像里验证功能
+docker run --rm --entrypoint sh ghcr.io/oikewll/r2-explorer:v2.17.0-slim \
+  -c "ls web/dist/assets | head"
+
+# 4. 经 SSH 管道直传软路由并载入（走局域网，几百 MB 很快）
+docker save ghcr.io/oikewll/r2-explorer:v2.17.0-slim | ssh root@<软路由IP> "docker load"
+
+# 5. 软路由上让服务用上这个镜像
+#    走 .run 安装器路线：改 /etc/r2-explorer/config.sh 里的 IMAGE 后执行 r2-explorer restart
+#    走 .ipk / LuCI 路线：在「服务 → R2 Explorer 网盘」页把镜像版本改成该 tag，点「重启服务」
+```
+
+几个实用细节：
+
+- **架构要匹配**：软路由基本都是 arm64（aarch64）或 x86_64，先 `uname -m` 确认。Apple Silicon Mac 原生就是 arm64，直接 `docker build` 即可；Intel Mac / x86 Linux 构建 arm64 需加 `--platform linux/arm64`（QEMU 模拟，较慢）
+- **镜像 tag 与 `IMAGE` 配置严格一致**：`docker load` 载入的 tag 必须和配置里的 `IMAGE` 完全相同，否则 `r2-explorer restart` 会去拉远端镜像
+- **离线安装 .run 也可以**：`r2-explorer` CLI 在 `docker pull` 失败时会自动回退使用本地已有镜像，所以「先 `docker load` 再跑安装器」的顺序同样成立
+- **升级同理**：新版本出来重复步骤 2-5 即可，`/etc/r2-explorer/data/` 的多账号配置不受影响
+
 ### 配置文件
 
 - `/etc/r2-explorer/config.sh`：端口（`PORT`）、镜像（`IMAGE`）、数据目录（`DATA_DIR`），改完执行 `r2-explorer restart` 生效
