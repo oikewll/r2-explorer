@@ -342,6 +342,83 @@ app.post('/api/accounts/:id/activate', authGuard, async (c) => {
   return c.json({ ok: true })
 })
 
+// 导出账号备份（含完整凭证的 JSON 文件，用于迁移/恢复；内置 env 账号除外）
+app.get('/api/accounts/export', authGuard, (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储（ACCOUNTS_KV），无账号可导出' }, 400)
+  const accounts = c._store.accounts.map((a) => ({
+    name: a.name,
+    accountId: a.accountId,
+    accessKeyId: a.accessKeyId,
+    secretAccessKey: a.secretAccessKey,
+    apiToken: a.apiToken || '',
+    cdnMap: a.cdnMap || {},
+  }))
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const body = JSON.stringify(
+    { app: 'r2-explorer', version: 1, exportedAt: new Date().toISOString(), accounts },
+    null,
+    2
+  )
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="r2-explorer-accounts-${date}.json"`,
+    },
+  })
+})
+
+// 导入账号备份（逐个验证凭证；已绑定的 Account ID 自动跳过）
+app.post('/api/accounts/import', authGuard, async (c) => {
+  if (!c.env.ACCOUNTS_KV) return c.json({ error: '未绑定 KV 存储（ACCOUNTS_KV），无法导入账号' }, 400)
+  const body = await c.req.json().catch(() => null)
+  const list = Array.isArray(body?.accounts) ? body.accounts : Array.isArray(body) ? body : null
+  if (!list || !list.length) return c.json({ error: '备份文件格式不正确（缺少 accounts 数组）' }, 400)
+
+  const store = c._store
+  const added = []
+  const skipped = []
+  const failed = []
+  for (const item of list) {
+    const name = String(item?.name || '').trim() || '导入账号'
+    const accountId = String(item?.accountId || '').trim()
+    const accessKeyId = String(item?.accessKeyId || '').trim()
+    const secretAccessKey = String(item?.secretAccessKey || '').trim()
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      failed.push({ name, error: '字段不完整（缺 Account ID 或密钥）' })
+      continue
+    }
+    if (!/^[a-f0-9]{32}$/i.test(accountId)) {
+      failed.push({ name, error: 'Account ID 格式不正确' })
+      continue
+    }
+    if (store.accounts.some((a) => a.accountId === accountId)) {
+      skipped.push(name)
+      continue
+    }
+    const err = await validateCreds(accountId, accessKeyId, secretAccessKey)
+    if (err) {
+      failed.push({ name, error: err })
+      continue
+    }
+    store.accounts.push({
+      id: crypto.randomUUID().slice(0, 8),
+      name,
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      apiToken: String(item?.apiToken || '').trim(),
+      cdnMap: item?.cdnMap && typeof item.cdnMap === 'object' && !Array.isArray(item.cdnMap) ? item.cdnMap : {},
+      createdAt: new Date().toISOString(),
+    })
+    added.push(name)
+  }
+  if (added.length) {
+    await writeStore(c.env, store)
+    c._store = store
+  }
+  return c.json({ ok: true, added: added.length, skipped: skipped.length, failed })
+})
+
 // ---------- 套餐识别（免费版 / 付费版，需账号配置了 CF API Token） ----------
 // R2 免费额度：10 GB 存储/月（官方定价）；付费版同样含 10 GB 免费额度，超出按量计费无硬上限
 const R2_FREE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024

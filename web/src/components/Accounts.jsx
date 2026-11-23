@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { loadAccountsAndBuckets } from '../lib/loader'
 import { useStore } from '../lib/store'
@@ -18,6 +18,82 @@ export default function Accounts({ onClose }) {
   const [error, setError] = useState('')
   const [confirmDel, setConfirmDel] = useState(null)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [pendingImport, setPendingImport] = useState(null) // { data, count }
+  const fileRef = useRef(null)
+
+  const exportAccounts = async () => {
+    const exportable = accounts.filter((a) => !a.builtin)
+    if (!exportable.length) {
+      toast('没有可导出的账号（内置环境变量账号不参与导出）', 'error')
+      return
+    }
+    try {
+      const res = await fetch('/api/accounts/export')
+      if (res.status === 401) {
+        toast('登录已过期，请重新登录', 'error')
+        return
+      }
+      if (!res.ok) {
+        let msg = `导出失败 (${res.status})`
+        try {
+          const j = await res.json()
+          if (j?.error) msg = j.error
+        } catch {}
+        toast(msg, 'error')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'r2-explorer-accounts-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.json'
+      a.click()
+      URL.revokeObjectURL(url)
+      toast('已导出 ' + exportable.length + ' 个账号（含完整凭证，请妥善保管）')
+    } catch (e) {
+      toast('导出失败：' + e.message, 'error')
+    }
+  }
+
+  const onImportFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // 允许重复选择同一文件
+    if (!file) return
+    let data
+    try {
+      data = JSON.parse(await file.text())
+    } catch {
+      toast('文件不是合法的 JSON', 'error')
+      return
+    }
+    const list = Array.isArray(data?.accounts) ? data.accounts : Array.isArray(data) ? data : null
+    if (!list || !list.length) {
+      toast('备份文件格式不正确（缺少 accounts 数组）', 'error')
+      return
+    }
+    setPendingImport({ data, count: list.length })
+  }
+
+  const doImport = async () => {
+    const { data } = pendingImport
+    setPendingImport(null)
+    setBusy(true)
+    try {
+      const r = await api('/api/accounts/import', { method: 'POST', body: JSON.stringify(data) })
+      const parts = ['导入完成：新增 ' + r.added + ' 个，跳过 ' + r.skipped + ' 个（已绑定）']
+      if (r.failed?.length) {
+        parts.push('失败 ' + r.failed.length + ' 个：' + r.failed.map((f) => `${f.name}（${f.error}）`).join('、'))
+        toast(parts.join('；'), 'error')
+      } else {
+        toast(parts[0])
+      }
+      await loadAccountsAndBuckets()
+    } catch (e) {
+      if (e.message !== 'unauthorized') toast('导入失败：' + e.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const resetForm = () => {
     setForm(null)
@@ -228,6 +304,15 @@ export default function Accounts({ onClose }) {
             <UIcon name="plus" size={15} />
             绑定新账号
           </button>
+          <div className="mt-2 flex gap-2">
+            <button className="btn-plain flex-1" onClick={exportAccounts} disabled={busy}>
+              导出备份
+            </button>
+            <button className="btn-plain flex-1" onClick={() => fileRef.current?.click()} disabled={busy}>
+              导入恢复
+            </button>
+            <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onImportFile} />
+          </div>
           <div className="mt-4 flex items-center justify-between border-t border-line pt-3.5">
             <span className="text-[12px] text-ink2/70">凭证来自「R2 → 管理 R2 API 令牌」</span>
             <button className="btn-ghost text-[13px]" onClick={logout} disabled={loggingOut}>
@@ -239,6 +324,15 @@ export default function Accounts({ onClose }) {
       )}
       {confirmDel && (
         <Confirm title="解绑账号" message={confirmDel.message} okText="解绑" onOk={() => remove(confirmDel.a)} onClose={() => setConfirmDel(null)} />
+      )}
+      {pendingImport && (
+        <Confirm
+          title="导入账号备份"
+          message={`将从备份文件导入 ${pendingImport.count} 条账号记录（文件含明文密钥）：\n逐个验证凭证后加入，已绑定的 Account ID 自动跳过。确定继续？`}
+          okText="导入"
+          onOk={doImport}
+          onClose={() => setPendingImport(null)}
+        />
       )}
     </Modal>
   )
