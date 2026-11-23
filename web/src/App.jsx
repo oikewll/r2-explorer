@@ -62,7 +62,7 @@ export default function App() {
           <Buckets />
         )}
       </main>
-      <Footer />
+      {route.bucket && <Footer />}
       {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
       {createBucketOpen && (
         <CreateBucket

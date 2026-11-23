@@ -7,6 +7,7 @@ import { useStore } from '../lib/store'
 import { FIcon, UIcon } from './icons'
 import DeleteBucket from './DeleteBucket'
 import StoragePanel from './StoragePanel'
+import Footer from './Footer'
 
 function BucketCard({ bucket, index, onDelete }) {
   const [stats, setStats] = useState(bucket.stats || null)
@@ -74,6 +75,8 @@ export default function Buckets() {
           <span className="text-[13px] text-ink2">{buckets.length ? buckets.length + ' 个存储桶' : ''}</span>
         </div>
         <StoragePanel buckets={buckets} />
+        {/* 页脚：跟随左栏，左对齐 */}
+        <Footer align="left" className="mt-3 pb-6" />
       </aside>
 
       {/* 右栏：存储桶列表 */}

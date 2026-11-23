@@ -1,8 +1,10 @@
 const REPO_URL = 'https://github.com/oikewll/r2-explorer'
 
-export default function Footer({ className = 'pb-28' }) {
+export default function Footer({ className = 'pb-28', align = 'center' }) {
   return (
-    <footer className={`flex items-center justify-center gap-2 text-[12px] text-ink2 ${className}`}>
+    <footer
+      className={`flex items-center gap-2 text-[12px] text-ink2 ${align === 'left' ? 'justify-start' : 'justify-center'} ${className}`}
+    >
       <span>R2 Explorer</span>
       <span className="text-line">|</span>
       <a
