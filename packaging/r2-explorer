@@ -87,7 +87,7 @@ do_install() {
     echo "  密码:   见 $ENVF （执行 r2-explorer password 查看）"
     echo "  数据:   $DATA_DIR （多账号配置，升级不丢）"
     echo "=============================================="
-    [ $i -ge 15 ] && echo "（服务仍在启动中，若页面打不开请稍候刷新）"
+    if [ $i -ge 15 ]; then echo "（服务仍在启动中，若页面打不开请稍候刷新）"; fi
 }
 
 cmd_status() {
