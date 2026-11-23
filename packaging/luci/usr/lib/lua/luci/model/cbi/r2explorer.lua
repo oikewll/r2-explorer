@@ -2,7 +2,7 @@
 local sys = require "luci.sys"
 local fs = require "nixio.fs"
 
-m = Map("r2-explorer", "R2 Explorer 网盘", "基于 Cloudflare R2 的轻量网盘。修改配置后先点页面底部「保存&应用」，再点上方「重启服务」生效。多账号绑定请在网页端右上角「账号管理」中操作。")
+m = Map("r2-explorer", "R2 文件管理", "基于 Cloudflare R2 的轻量网盘。修改配置后先点页面底部「保存&应用」，再点上方「重启服务」生效。多账号绑定请在网页端右上角「账号管理」中操作。")
 
 local docker_ok = sys.call("command -v docker >/dev/null 2>&1") == 0
 local state = ""

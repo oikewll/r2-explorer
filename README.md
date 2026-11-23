@@ -132,7 +132,7 @@ r2-explorer uninstall --purge     # 卸载（--purge 连本地配置一起删）
 ### 方式二：iStore 手动安装 .ipk（推荐）
 
 1. iStore → 手动安装 → 上传 `r2-explorer_all.ipk`
-2. LuCI 左侧「服务」菜单 → **R2 Explorer 网盘**：可配置端口、镜像版本、登录密码、内置 R2 账号环境变量与自定义环境变量，点「重启服务」即按配置重建容器
+2. LuCI 左侧「服务」菜单 → **R2 文件管理**：可配置端口、镜像版本、登录密码、内置 R2 账号环境变量与自定义环境变量，点「重启服务」即按配置重建容器
 3. 也可以 SSH 执行 `r2-explorer install` 启动（CLI 与 LuCI 共用 UCI 配置）
 
 ### 方式三：手动构建 + 局域网离线同步
@@ -161,7 +161,7 @@ docker save ghcr.io/oikewll/r2-explorer:v2.17.0-slim | ssh root@<软路由IP> "d
 
 # 5. 软路由上让服务用上这个镜像
 #    走 .run 安装器路线：改 /etc/r2-explorer/config.sh 里的 IMAGE 后执行 r2-explorer restart
-#    走 .ipk / LuCI 路线：在「服务 → R2 Explorer 网盘」页把镜像版本改成该 tag，点「重启服务」
+#    走 .ipk / LuCI 路线：在「服务 → R2 文件管理」页把镜像版本改成该 tag，点「重启服务」
 ```
 
 几个实用细节：
