@@ -147,15 +147,11 @@ export default function StoragePanel({ buckets }) {
 
   return (
     <div className="card p-5 lg:sticky lg:top-[72px]">
-      <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-[15px] font-semibold">
-          存储总览
-          {planBadge && (
-            <span className={'rounded-md px-1.5 py-px text-[11px] font-medium ' + planBadge.cls}>{planBadge.text}</span>
-          )}
-        </h2>
-        <span className="text-[12px] text-ink2">{buckets.length ? buckets.length + ' 个存储桶' : ''}</span>
-      </div>
+      {planBadge && (
+        <div className="mb-3 flex justify-end">
+          <span className={'rounded-md px-1.5 py-px text-[11px] font-medium ' + planBadge.cls}>{planBadge.text}</span>
+        </div>
+      )}
 
       {buckets.length === 0 ? (
         <div className="flex flex-col items-center py-10 text-[13px] text-ink2">
@@ -164,7 +160,7 @@ export default function StoragePanel({ buckets }) {
         </div>
       ) : (
         <>
-          <div className="mt-4">
+          <div>
             <Donut byType={byType} total={data?.size || 0} loading={!data} />
           </div>
 

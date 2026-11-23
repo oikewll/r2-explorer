@@ -66,8 +66,12 @@ export default function Buckets() {
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-5">
-      {/* 左栏：存储统计 */}
+      {/* 左栏：存储统计（标题行与右栏"存储桶"同款样式） */}
       <aside className="w-full shrink-0 lg:w-[300px]">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-[17px] font-semibold">存储总览</h2>
+          <span className="text-[13px] text-ink2">{buckets.length ? buckets.length + ' 个存储桶' : ''}</span>
+        </div>
         <StoragePanel buckets={buckets} />
       </aside>
 
