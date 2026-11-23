@@ -361,15 +361,20 @@ app.post('/api/accounts/:id/activate', authGuard, async (c) => {
   return c.json({ ok: true })
 })
 
-// 导出账号备份（含完整凭证的 JSON 文件，用于迁移/恢复；内置 env 账号除外）
+// 导出账号备份（含完整凭证的 JSON 文件，用于迁移/恢复；内置 env 账号一并导出并标记 builtin）
 app.get('/api/accounts/export', authGuard, (c) => {
-  const accounts = store.accounts.map((a) => ({
+  const list = [...store.accounts]
+  const envAcc = envAccount()
+  if (envAcc && !list.some((a) => a.accountId === envAcc.accountId)) list.push(envAcc)
+  if (!list.length) return c.json({ error: '没有可导出的账号（未绑定账号且未配置 R2_* 环境变量）' }, 400)
+  const accounts = list.map((a) => ({
     name: a.name,
     accountId: a.accountId,
     accessKeyId: a.accessKeyId,
     secretAccessKey: a.secretAccessKey,
     apiToken: a.apiToken || '',
     cdnMap: a.cdnMap || {},
+    ...(a.builtin ? { builtin: true } : {}),
   }))
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   const body = JSON.stringify(
@@ -408,6 +413,11 @@ app.post('/api/accounts/import', authGuard, async (c) => {
       continue
     }
     if (store.accounts.some((a) => a.accountId === accountId)) {
+      skipped.push(name)
+      continue
+    }
+    // 备份里的内置账号：当前环境已提供同 accountId 时跳过，避免恢复到自己时重复绑定
+    if (item?.builtin && envAccount()?.accountId === accountId) {
       skipped.push(name)
       continue
     }

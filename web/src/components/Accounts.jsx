@@ -22,9 +22,8 @@ export default function Accounts({ onClose }) {
   const fileRef = useRef(null)
 
   const exportAccounts = async () => {
-    const exportable = accounts.filter((a) => !a.builtin)
-    if (!exportable.length) {
-      toast('没有可导出的账号（内置环境变量账号不参与导出）', 'error')
+    if (!accounts.length) {
+      toast('没有可导出的账号', 'error')
       return
     }
     try {
@@ -49,7 +48,7 @@ export default function Accounts({ onClose }) {
       a.download = 'r2-explorer-accounts-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.json'
       a.click()
       URL.revokeObjectURL(url)
-      toast('已导出 ' + exportable.length + ' 个账号（含完整凭证，请妥善保管）')
+      toast('已导出 ' + accounts.length + ' 个账号（含内置账号与完整凭证，请妥善保管）')
     } catch (e) {
       toast('导出失败：' + e.message, 'error')
     }
