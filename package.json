@@ -1,6 +1,6 @@
 {
   "name": "r2-explorer",
-  "version": "2.14.0",
+  "version": "2.14.1",
   "description": "Cloudflare R2 file explorer with simple auth",
   "license": "MIT",
   "author": "Hoanliu",
