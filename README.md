@@ -99,6 +99,53 @@ docker run -d --name r2-explorer -p 3000:3000 \
 
 挂载 `./data` 卷用于持久化界面里绑定的多账号配置（`data/accounts.json`）。
 
+## iStoreOS / 软路由部署（安装器）
+
+不想手动敲 `docker run`？每次打 `v*` tag 会自动构建 **amd64 + arm64 双架构镜像**，并在 [Releases](https://github.com/oikewll/r2-explorer/releases) 附带两种安装包：
+
+| 安装包 | 适用环境 | 说明 |
+| --- | --- | --- |
+| `r2-explorer-installer.run` | 任何带 Docker 的系统（iStoreOS / OpenWrt / 任意 Linux） | 自解压 shell 安装器，一条命令装完并启动 |
+| `r2-explorer_all.ipk` | iStoreOS / 集成了 iStore 的 OpenWrt | opkg 包，依赖 `docker-deps`（iStore 会自动带上 Docker），可在 iStore「手动安装」里上传 |
+
+镜像版本两种：`latest`（完整版，含 ffmpeg，网页端可在线转码播放 mkv/avi，约 430MB）；`slim`（精简版，无 ffmpeg，约 270MB，播放交给浏览器解码）。
+
+### 方式一：.run 安装器（推荐）
+
+```bash
+# SSH 进软路由后执行（国内网络拉 ghcr 慢的话先配 Docker 镜像加速）
+wget -O /tmp/r2ex.run https://github.com/oikewll/r2-explorer/releases/latest/download/r2-explorer-installer.run
+sh /tmp/r2ex.run                  # 完整版，默认端口 3000
+sh /tmp/r2ex.run --slim           # 精简版
+sh /tmp/r2ex.run --port 8888      # 自定义端口
+```
+
+安装器会自动生成随机登录密码并打印访问地址，密码也可随时查看：
+
+```bash
+r2-explorer password              # 查看登录密码
+r2-explorer status                # 容器状态
+r2-explorer update                # 升级镜像（多账号配置不丢）
+r2-explorer uninstall --purge     # 卸载（--purge 连本地配置一起删）
+```
+
+### 方式二：iStore 手动安装 .ipk
+
+1. iStore → 手动安装 → 上传 `r2-explorer_all.ipk`
+2. SSH 进软路由执行 `r2-explorer install` 启动服务
+
+### 配置文件
+
+- `/etc/r2-explorer/config.sh`：端口（`PORT`）、镜像（`IMAGE`）、数据目录（`DATA_DIR`），改完执行 `r2-explorer restart` 生效
+- `/etc/r2-explorer/env`：登录密码（`AUTH_PASSWORD`）与可选的内置账号环境变量（`R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`，不填则登录后在界面里绑定多账号）
+- `/etc/r2-explorer/data/`：多账号配置持久化目录（`accounts.json`），升级/重建容器不丢
+
+### 注意事项
+
+- 镜像托管在 `ghcr.io/oikewll/r2-explorer`；ghcr 直连慢可先在 iStoreOS 里配置 Docker 镜像加速，或安装时用 `--image <加速地址/oikewll/r2-explorer:latest>` 指定源
+- 容器自带 `--restart unless-stopped`，重启软路由后随 Docker 自动拉起
+- 建议内存 ≥512MB 的设备使用（Node.js 运行时约 100MB+）；安装后打开 WebDAV（`/dav/`）还能用 rclone 把 R2 挂成本地目录，见下文 WebDAV 章节
+
 ## WebDAV（Docker/Node 版）
 
 > 详细的客户端配置与常见问题见 [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md)。

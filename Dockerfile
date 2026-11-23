@@ -1,5 +1,7 @@
 FROM node:22-alpine AS web-build
 WORKDIR /build
+# vite 加载 web/vite.config.js 时会向上查找根 package.json，缺了会报 ENOENT
+RUN echo '{"name":"r2-explorer-build","private":true}' > package.json
 COPY web/package.json web/package-lock.json* ./web/
 RUN cd web && npm ci
 COPY web ./web

@@ -1,0 +1,116 @@
+#!/bin/sh
+# r2-explorer CLI：管理软路由/服务器上的 r2-explorer 容器
+# 用法：r2-explorer {install|update|start|stop|restart|status|password|uninstall [--purge]}
+
+NAME=r2-explorer
+CONF_DIR=/etc/r2-explorer
+CONFIG=$CONF_DIR/config.sh
+ENVF=$CONF_DIR/env
+SHARE_DIR=/usr/share/r2-explorer
+
+DEFAULT_IMAGE="ghcr.io/oikewll/r2-explorer:latest"
+DEFAULT_PORT=3000
+DEFAULT_DATA_DIR="/etc/r2-explorer/data"
+
+# ---------- 读取配置 ----------
+if [ -f "$CONFIG" ]; then
+    . "$CONFIG"
+fi
+PORT=${PORT:-$DEFAULT_PORT}
+IMAGE=${IMAGE:-$DEFAULT_IMAGE}
+DATA_DIR=${DATA_DIR:-$DEFAULT_DATA_DIR}
+
+die() { echo "[错误] $*" >&2; exit 1; }
+
+# 生成随机密码（busybox 兼容）
+gen_password() {
+    tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c 20 || \
+    od -An -N12 -tx4 /dev/urandom | tr -d ' \n'
+}
+
+lan_ip() {
+    ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1
+}
+
+ensure_env() {
+    if [ ! -f "$ENVF" ]; then
+        mkdir -p "$CONF_DIR"
+        PW=$(gen_password)
+        {
+            echo "# 登录密码（修改后执行 r2-explorer restart 生效）"
+            echo "AUTH_PASSWORD=$PW"
+            echo "# 可选：内置默认账号（不填则登录后在界面里绑定多账号）"
+            echo "#R2_ACCOUNT_ID="
+            echo "#R2_ACCESS_KEY_ID="
+            echo "#R2_SECRET_ACCESS_KEY="
+        } > "$ENVF"
+        chmod 600 "$ENVF" 2>/dev/null
+    fi
+    grep -q '^AUTH_PASSWORD=' "$ENVF" || die "$ENVF 缺少 AUTH_PASSWORD"
+}
+
+do_install() {
+    command -v docker >/dev/null 2>&1 || die "未检测到 docker，请先在 iStore 安装 Docker"
+    ensure_env
+
+    echo "[1/3] 拉取镜像 $IMAGE ..."
+    docker pull "$IMAGE" || die "镜像拉取失败，可检查网络或改用镜像加速"
+
+    echo "[2/3] 启动容器 ..."
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    mkdir -p "$DATA_DIR"
+    docker run -d --name "$NAME" \
+        --restart unless-stopped \
+        -p "$PORT":3000 \
+        -v "$DATA_DIR":/app/data \
+        --env-file "$ENVF" \
+        "$IMAGE" || die "容器启动失败，执行 docker logs $NAME 查看日志"
+
+    echo "[3/3] 等待服务就绪 ..."
+    i=0
+    while [ $i -lt 15 ]; do
+        if wget -q -O /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then break; fi
+        i=$((i+1)); sleep 1
+    done
+
+    IP=$(lan_ip)
+    echo ""
+    echo "=============================================="
+    echo "  r2-explorer 已启动"
+    echo "  地址:   http://${IP:-127.0.0.1}:$PORT/"
+    echo "  密码:   见 $ENVF （执行 r2-explorer password 查看）"
+    echo "  数据:   $DATA_DIR （多账号配置，升级不丢）"
+    echo "=============================================="
+    [ $i -ge 15 ] && echo "（服务仍在启动中，若页面打不开请稍候刷新）"
+}
+
+cmd_status() {
+    docker ps -a --filter "name=$NAME" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null \
+        || die "docker 不可用"
+}
+
+cmd_password() {
+    [ -f "$ENVF" ] || die "尚未安装（先执行 r2-explorer install）"
+    grep '^AUTH_PASSWORD=' "$ENVF" | cut -d= -f2
+}
+
+case "${1:-}" in
+    install|update)
+        do_install ;;
+    start)      docker start "$NAME" ;;
+    stop)       docker stop "$NAME" ;;
+    restart)    docker restart "$NAME" ;;
+    status)     cmd_status ;;
+    password)   cmd_password ;;
+    uninstall)
+        docker rm -f "$NAME" >/dev/null 2>&1 || true
+        if [ "$2" = "--purge" ]; then
+            rm -rf "$CONF_DIR"
+            echo "容器与本地配置已删除"
+        else
+            echo "容器已删除。多账号配置保留在 $CONF_DIR，彻底清除请加 --purge"
+        fi ;;
+    *)
+        echo "用法: r2-explorer {install|update|start|stop|restart|status|password|uninstall [--purge]}"
+        exit 1 ;;
+esac

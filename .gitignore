@@ -15,3 +15,4 @@ wrangler.prod.toml
 .workbuddy/
 pnpm-lock.yaml
 pnpm-workspace.yaml
+dist/
