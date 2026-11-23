@@ -129,10 +129,11 @@ r2-explorer update                # 升级镜像（多账号配置不丢）
 r2-explorer uninstall --purge     # 卸载（--purge 连本地配置一起删）
 ```
 
-### 方式二：iStore 手动安装 .ipk
+### 方式二：iStore 手动安装 .ipk（推荐）
 
 1. iStore → 手动安装 → 上传 `r2-explorer_all.ipk`
-2. SSH 进软路由执行 `r2-explorer install` 启动服务
+2. LuCI 左侧「服务」菜单 → **R2 Explorer 网盘**：可配置端口、镜像版本、登录密码、内置 R2 账号环境变量与自定义环境变量，点「重启服务」即按配置重建容器
+3. 也可以 SSH 执行 `r2-explorer install` 启动（CLI 与 LuCI 共用 UCI 配置）
 
 ### 配置文件
 

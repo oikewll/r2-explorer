@@ -1,0 +1,5 @@
+config main 'main'
+	option enabled '1'
+	option port '3000'
+	option image 'ghcr.io/oikewll/r2-explorer:latest'
+	option data_dir '/etc/r2-explorer/data'

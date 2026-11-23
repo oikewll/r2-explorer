@@ -20,11 +20,20 @@ cp "$ROOT/packaging/r2-explorer" "$DATA/usr/bin/r2-explorer"
 chmod 755 "$DATA/usr/bin/r2-explorer"
 cp "$ROOT/packaging/config.sh" "$DATA/etc/r2-explorer/config.sh"
 
+# LuCI 服务页（服务菜单入口 + 配置页 + init.d）
+mkdir -p "$DATA/etc/config" "$DATA/etc/init.d"
+cp -a "$ROOT/packaging/luci/etc/config/r2-explorer" "$DATA/etc/config/r2-explorer"
+cp -a "$ROOT/packaging/luci/etc/init.d/r2-explorer" "$DATA/etc/init.d/r2-explorer"
+chmod 755 "$DATA/etc/init.d/r2-explorer"
+mkdir -p "$DATA/usr/lib/lua/luci/controller" "$DATA/usr/lib/lua/luci/model/cbi"
+cp -a "$ROOT/packaging/luci/usr/lib/lua/luci/controller/r2explorer.lua" "$DATA/usr/lib/lua/luci/controller/"
+cp -a "$ROOT/packaging/luci/usr/lib/lua/luci/model/cbi/r2explorer.lua" "$DATA/usr/lib/lua/luci/model/cbi/"
+
 # ---------- control ----------
 cat > "$CTRL/control" <<EOF
 Package: r2-explorer
 Version: ${VERSION}-1
-Depends: docker-deps
+Depends: docker-deps, luci-compat
 Architecture: all
 Maintainer: Hoanliu
 Section: net
@@ -38,7 +47,10 @@ EOF
 
 cat > "$CTRL/postinst" <<'EOF'
 #!/bin/sh
-echo "r2-explorer 已安装。执行 'r2-explorer install' 启动服务（默认端口 3000，自动生成登录密码）。"
+/etc/init.d/r2-explorer enable 2>/dev/null || true
+echo "r2-explorer 已安装。"
+echo "  - LuCI「服务」菜单 → R2 Explorer 网盘：配置端口/环境变量，点「重启服务」启动"
+echo "  - 或 SSH 执行 'r2-explorer install' 启动（默认端口 3000，自动生成登录密码）"
 exit 0
 EOF
 

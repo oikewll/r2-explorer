@@ -20,6 +20,16 @@ PORT=${PORT:-$DEFAULT_PORT}
 IMAGE=${IMAGE:-$DEFAULT_IMAGE}
 DATA_DIR=${DATA_DIR:-$DEFAULT_DATA_DIR}
 
+# OpenWrt/iStoreOS：LuCI 服务页的 UCI 配置优先于 config.sh
+if command -v uci >/dev/null 2>&1 && uci -q get r2-explorer.main >/dev/null 2>&1; then
+    _p=$(uci -q get r2-explorer.main.port)
+    _i=$(uci -q get r2-explorer.main.image)
+    _d=$(uci -q get r2-explorer.main.data_dir)
+    [ -n "$_p" ] && PORT=$_p
+    [ -n "$_i" ] && IMAGE=$_i
+    [ -n "$_d" ] && DATA_DIR=$_d
+fi
+
 die() { echo "[错误] $*" >&2; exit 1; }
 
 # 生成随机密码（busybox 兼容）

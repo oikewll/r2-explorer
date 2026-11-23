@@ -1,0 +1,71 @@
+#!/bin/sh /etc/rc.common
+# r2-explorer 服务：按 UCI 配置重建并运行 Docker 容器
+
+START=99
+STOP=10
+
+NAME=r2-explorer
+CONF_DIR=/etc/r2-explorer
+ENVF=$CONF_DIR/env
+
+append_env() {
+    [ -n "$1" ] && echo "$1" >> "$ENVF.new"
+}
+
+start_service() {
+    local enabled port image data_dir auth_password acc_id acc_key acc_secret
+    config_load "r2-explorer"
+
+    config_get_bool enabled main enabled 1
+    [ "$enabled" = "1" ] || return 0
+    command -v docker >/dev/null 2>&1 || { echo "docker 不可用"; return 1; }
+
+    # 等 Docker 就绪（开机时 docker 服务可能还没起完）
+    i=0
+    while ! docker info >/dev/null 2>&1; do
+        i=$((i+1))
+        [ $i -ge 10 ] && { echo "docker 未就绪"; return 1; }
+        sleep 3
+    done
+
+    config_get port main port "3000"
+    config_get image main image "ghcr.io/oikewll/r2-explorer:latest"
+    config_get data_dir main data_dir "/etc/r2-explorer/data"
+    config_get auth_password main auth_password ""
+    config_get acc_id main r2_account_id ""
+    config_get acc_key main r2_access_key_id ""
+    config_get acc_secret main r2_secret_access_key ""
+
+    mkdir -p "$CONF_DIR" "$data_dir"
+
+    # 生成 env 文件：保留旧文件中非本插件管理的行，再写入 UCI 里的值
+    touch "$ENVF"
+    grep -v -E '^(AUTH_PASSWORD|R2_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY)=' "$ENVF" > "$ENVF.new" || true
+    [ -n "$auth_password" ] && echo "AUTH_PASSWORD=$auth_password" >> "$ENVF.new"
+    [ -n "$acc_id" ] && echo "R2_ACCOUNT_ID=$acc_id" >> "$ENVF.new"
+    [ -n "$acc_key" ] && echo "R2_ACCESS_KEY_ID=$acc_key" >> "$ENVF.new"
+    [ -n "$acc_secret" ] && echo "R2_SECRET_ACCESS_KEY=$acc_secret" >> "$ENVF.new"
+    config_list_foreach main extra_env append_env
+    # 从未设置密码则随机生成
+    grep -q '^AUTH_PASSWORD=' "$ENVF.new" || \
+        echo "AUTH_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)" >> "$ENVF.new"
+    mv "$ENVF.new" "$ENVF"
+    chmod 600 "$ENVF"
+
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker run -d --name "$NAME" \
+        --restart unless-stopped \
+        -p "$port":3000 \
+        -v "$data_dir":/app/data \
+        --env-file "$ENVF" \
+        "$image" >/dev/null || { echo "容器启动失败"; return 1; }
+}
+
+stop_service() {
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+}
+
+restart() {
+    stop_service
+    start_service
+}
