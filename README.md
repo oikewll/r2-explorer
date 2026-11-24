@@ -1,5 +1,14 @@
 # R2 Explorer
 
+**简体中文** | [English](README.en.md)
+
+![Release](https://img.shields.io/github/v/release/oikewll/r2-explorer?color=e8613c&label=release)
+![License](https://img.shields.io/github/license/oikewll/r2-explorer?color=green&label=license)
+![Deploy](https://img.shields.io/github/actions/workflow/status/oikewll/r2-explorer/deploy.yml?branch=main&label=deploy)
+![Docker Release](https://img.shields.io/github/actions/workflow/status/oikewll/r2-explorer/docker-release.yml?branch=main&label=docker%20release)
+![Docker Image](https://img.shields.io/badge/ghcr.io-oikewll%2Fr2--explorer-2496ED?logo=docker&logoColor=white)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+
 基于 Cloudflare R2 的轻量文件管理器：绑定**多个 Cloudflare 账号**并随时切换、浏览账号下**所有 R2 存储桶**、查看文件大小/时间、一键复制 CDN 直链。
 
 - 后端：Node.js + [Hono](https://hono.dev)（API 不变，Workers 与 Docker 双部署）
@@ -12,6 +21,18 @@
 - 直链策略：各账号的 `CDN 映射` 里配置了自定义域的桶用 CDN 链接；未配置的桶自动生成 **7 天预签名直链**
 - 二维码：文件行右侧、右键菜单、网格卡片、预览顶栏一键生成二维码，手机扫码即可打开 / 下载直链，也可保存二维码图片
 - 部署：Cloudflare Workers（推荐，静态资产托管）或 Docker 自托管
+
+## 界面截图
+
+| 存储桶总览 | 文件浏览 |
+| :---: | :---: |
+| ![存储桶总览](docs/screenshots/03-bucket-overview.jpg) | ![文件浏览](docs/screenshots/04-file-browser.jpg) |
+
+部署在 iStoreOS / 软路由上，LuCI 集成「R2 文件管理」插件，一条命令安装：
+
+| iStoreOS 首页 | LuCI「R2 文件管理」插件 |
+| :---: | :---: |
+| ![iStoreOS 首页](docs/screenshots/01-istoreos-home.jpg) | ![LuCI R2 文件管理](docs/screenshots/02-istoreos-r2-plugin.jpg) |
 
 ## 多账号管理
 
