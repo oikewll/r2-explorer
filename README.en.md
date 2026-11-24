@@ -28,6 +28,12 @@ A lightweight file manager for Cloudflare R2: bind **multiple Cloudflare account
 | :---: | :---: |
 | ![Bucket Overview](docs/screenshots/03-bucket-overview.jpg) | ![File Browser](docs/screenshots/04-file-browser.jpg) |
 
+Online playback for common audio and video formats (the full image includes ffmpeg for in-browser transcoding of mkv/avi):
+
+| Audio Player (lyrics, playback queue) | Video Player (speed, aspect ratio, flip) |
+| :---: | :---: |
+| ![Audio Player](docs/screenshots/05-audio-player.jpg) | ![Video Player](docs/screenshots/06-video-player.jpg) |
+
 Running on an iStoreOS / OpenWrt router, with an integrated "R2 File Manager" LuCI plugin installed in one command:
 
 | iStoreOS Home | LuCI "R2 File Manager" Plugin |

@@ -28,6 +28,12 @@
 | :---: | :---: |
 | ![存储桶总览](docs/screenshots/03-bucket-overview.jpg) | ![文件浏览](docs/screenshots/04-file-browser.jpg) |
 
+支持主流音频 / 视频在线播放（完整版镜像含 ffmpeg，可在线转码 mkv/avi）：
+
+| 音频播放（歌词、播放队列） | 视频播放（倍速、画面比例、画面翻转） |
+| :---: | :---: |
+| ![音频播放](docs/screenshots/05-audio-player.jpg) | ![视频播放](docs/screenshots/06-video-player.jpg) |
+
 部署在 iStoreOS / 软路由上，LuCI 集成「R2 文件管理」插件，一条命令安装：
 
 | iStoreOS 首页 | LuCI「R2 文件管理」插件 |
