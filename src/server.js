@@ -29,6 +29,7 @@ import path from 'node:path'
 import { detectArchiveKind, getArchiveBuffer, listRar, list7z, listTar, extractRar, extract7z, extractTar, extractAllRar, extractAll7z, extractAllTar } from './archives.js'
 import { registerWebDAV } from './webdav.js'
 import { registerOfflineDownload } from './offline.js'
+import { registerMcp, TEXT_HEAD_PROBE } from './mcp-core.js'
 
 // ---------- env ----------
 const {
@@ -41,6 +42,7 @@ const {
   AUTH_PASSWORD,
   AUTH_SECRET,
   ACCOUNTS_FILE,
+  MCP_TOKEN,
   PORT = 3000,
 } = process.env
 
@@ -490,10 +492,11 @@ app.get('/api/plan', authGuard, async (c) => {
 
 // ---------- 桶统计（内存缓存 1 小时，按账号隔离） ----------
 const STATS_TTL_MS = 3600 * 1000
-const statsCache = new Map() // `${accountId}:${bucket}:v2` -> { stats, expires }
+const MAX_STATS_SCAN = 50000 // 超大桶保护：统计/搜索最多扫描的对象数
+const statsCache = new Map() // `${accountId}:${bucket}` -> { stats, expires }
 
 function getCachedStats(c, bucket) {
-  const key = `${c._account?.id || 'env'}:${bucket}:v2`
+  const key = `${c._account?.id || 'env'}:${bucket}`
   const hit = statsCache.get(key)
   if (hit && hit.expires > Date.now()) return hit.stats
   if (hit) statsCache.delete(key)
@@ -581,6 +584,8 @@ app.get('/api/stats', authGuard, async (c) => {
   let objects = 0
   let size = 0
   let lastModified = null
+  let scanned = 0
+  let truncated = false
   const byType = newByType()
   let token
   do {
@@ -593,6 +598,7 @@ app.get('/api/stats', authGuard, async (c) => {
     )
     for (const o of res.Contents || []) {
       objects++
+      scanned++
       const sz = o.Size || 0
       size += sz
       const t = typeOfKey(o.Key || '')
@@ -600,6 +606,11 @@ app.get('/api/stats', authGuard, async (c) => {
       byType[t].size += sz
       const lm = o.LastModified ? new Date(o.LastModified).toISOString() : null
       if (lm && (!lastModified || lm > lastModified)) lastModified = lm
+    }
+    // 超大桶保护：最多扫描 MAX_SCAN 个对象，超出后统计标记 truncated（数字为下限估计）
+    if (res.IsTruncated && scanned >= MAX_STATS_SCAN) {
+      truncated = true
+      break
     }
     token = res.IsTruncated ? res.NextContinuationToken : undefined
   } while (token)
@@ -611,6 +622,7 @@ app.get('/api/stats', authGuard, async (c) => {
     lastModified,
     modifiedText: lastModified ? formatTime(lastModified) : null,
     byType,
+    truncated,
     computedAt: new Date().toISOString(),
   }
   statsCache.set(`${c._account?.id || 'env'}:${bucket}`, { stats, expires: Date.now() + STATS_TTL_MS })
@@ -1666,6 +1678,201 @@ registerOfflineDownload(app, {
 
 // ---------- WebDAV（/dav/，Basic 认证，密码 = 登录密码；仅 Node/Docker 版） ----------
 registerWebDAV(app, { AUTH_PASSWORD })
+
+// ---------- MCP 只读服务（/mcp，Bearer MCP_TOKEN；未配置则端点关闭） ----------
+// 工具集与协议见 src/mcp-core.js；安全设计见 docs/mcp-readonly-design.md
+function mcpBackend(c) {
+  if (!c._account || !c._s3) return null
+  const s3 = c._s3
+  const notFound = (e, op) => {
+    const code = e?.$metadata?.httpStatusCode
+    return new Error(`${op} failed: ${code || e.message}（文件不存在？可用 list_objects/search_objects 确认路径）`)
+  }
+  return {
+    async listBuckets() {
+      const res = await s3.send(new ListBucketsCommand({}))
+      const names = (res.Buckets || []).map((b) => b.Name).filter(Boolean).sort()
+      return {
+        account: c._account.name || c._account.id,
+        buckets: names.map((name) => {
+          const st = getCachedStats(c, name)
+          return st ? { name, objects: st.objects, sizeText: st.sizeText } : { name }
+        }),
+      }
+    },
+    async bucketStats(bucket) {
+      const cached = getCachedStats(c, bucket)
+      if (cached) return { ...cached, cached: true }
+      let objects = 0
+      let size = 0
+      let lastModified = null
+      let scanned = 0
+      let truncated = false
+      const byType = newByType()
+      let token
+      do {
+        const res = await s3.send(new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 1000, ContinuationToken: token }))
+        for (const o of res.Contents || []) {
+          objects++
+          scanned++
+          const sz = o.Size || 0
+          size += sz
+          const t = typeOfKey(o.Key || '')
+          byType[t].count++
+          byType[t].size += sz
+          const lm = o.LastModified ? new Date(o.LastModified).toISOString() : null
+          if (lm && (!lastModified || lm > lastModified)) lastModified = lm
+        }
+        if (res.IsTruncated && scanned >= MAX_STATS_SCAN) {
+          truncated = true
+          break
+        }
+        token = res.IsTruncated ? res.NextContinuationToken : undefined
+      } while (token)
+      const stats = {
+        bucket,
+        objects,
+        size,
+        sizeText: formatSize(size),
+        lastModified,
+        byType,
+        truncated,
+      }
+      statsCache.set(`${c._account?.id || 'env'}:${bucket}`, { stats, expires: Date.now() + STATS_TTL_MS })
+      return stats
+    },
+    async listObjects(bucket, prefix) {
+      const res = await s3.send(
+        new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix || undefined, Delimiter: '/', MaxKeys: 1000 })
+      )
+      const dirs = (res.CommonPrefixes || [])
+        .map((p) => ({ name: p.Prefix.slice(prefix.length).replace(/\/$/, ''), path: p.Prefix }))
+        .filter((d) => d.name)
+        .sort((a, b) => a.name.localeCompare(b.name))
+      const files = []
+      for (const o of res.Contents || []) {
+        if (o.Key === prefix) continue
+        const { url, presigned } = await fileUrl(c, bucket, o.Key)
+        files.push({
+          name: o.Key.slice(prefix.length),
+          path: o.Key,
+          size: o.Size,
+          sizeText: formatSize(o.Size),
+          modified: o.LastModified ? new Date(o.LastModified).toISOString() : null,
+          url,
+          presigned,
+        })
+      }
+      files.sort((a, b) => a.name.localeCompare(b.name))
+      return { bucket, prefix, dirs, files, truncated: !!res.IsTruncated }
+    },
+    async searchObjects(bucket, q, prefix, limit) {
+      const needle = q.toLowerCase()
+      const files = []
+      let token
+      let more = false
+      let scanned = 0
+      while (true) {
+        const res = await s3.send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix || undefined,
+            MaxKeys: 1000,
+            ContinuationToken: token,
+          })
+        )
+        for (const o of res.Contents || []) {
+          scanned++
+          const key = o.Key || ''
+          if (key.endsWith('/')) continue
+          if (!key.toLowerCase().includes(needle)) continue
+          const name = key.split('/').pop()
+          const { url, presigned } = await fileUrl(c, bucket, key)
+          files.push({
+            name,
+            path: key,
+            dir: key.slice(0, key.length - name.length),
+            size: o.Size,
+            sizeText: formatSize(o.Size),
+            url,
+            presigned,
+          })
+          if (files.length >= limit) break
+        }
+        if (files.length >= limit) {
+          more = !!res.IsTruncated
+          break
+        }
+        if (!res.IsTruncated || scanned >= MAX_STATS_SCAN) {
+          more = !!res.IsTruncated && scanned >= MAX_STATS_SCAN
+          break
+        }
+        token = res.NextContinuationToken
+      }
+      return { files, more, scanned }
+    },
+    async getFileInfo(bucket, key) {
+      let res
+      try {
+        res = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+      } catch (e) {
+        throw notFound(e, 'HeadObject')
+      }
+      const { url, presigned } = await fileUrl(c, bucket, key)
+      return {
+        bucket,
+        key,
+        size: res.ContentLength,
+        sizeText: formatSize(res.ContentLength),
+        contentType: res.ContentType || '',
+        etag: (res.ETag || '').replace(/"/g, ''),
+        modified: res.LastModified ? new Date(res.LastModified).toISOString() : null,
+        url,
+        presigned,
+      }
+    },
+    async readTextFile(bucket, key, maxChars) {
+      let head
+      try {
+        head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+      } catch (e) {
+        throw notFound(e, 'HeadObject')
+      }
+      if ((head.ContentLength || 0) > TEXT_CAP) {
+        throw new Error(`文件 ${formatSize(head.ContentLength)} 超过 2MB 文本读取上限，请用 get_file_url 获取下载直链`)
+      }
+      const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+      const text = await obj.Body.transformToString('utf-8')
+      if (text.slice(0, TEXT_HEAD_PROBE).includes('\u0000')) {
+        throw new Error('内容疑似二进制文件，请用 get_file_info / get_file_url 获取下载直链')
+      }
+      const truncated = text.length > maxChars
+      const { url, presigned } = await fileUrl(c, bucket, key)
+      return {
+        text: truncated ? text.slice(0, maxChars) : text,
+        truncated,
+        totalChars: text.length,
+        totalSize: head.ContentLength,
+        url,
+        presigned,
+      }
+    },
+    async getFileUrl(bucket, key, expiresIn) {
+      const mapped = c._cdnMap[bucket] || c._cdnMap['*']
+      if (mapped) {
+        return { url: `${mapped.replace(/\/+$/, '')}/${key.split('/').map(encodeURIComponent).join('/')}`, presigned: false }
+      }
+      const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn })
+      return { url, presigned: true, expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() }
+    },
+  }
+}
+
+registerMcp(app, {
+  version: '2.18.0', // 与 package.json version 保持同步
+  getToken: () => MCP_TOKEN,
+  makeBackend: mcpBackend,
+})
 
 serve({ fetch: app.fetch, port: Number(PORT) }, (info) => {
   console.log(`[r2-explorer] listening on http://localhost:${info.port}`)

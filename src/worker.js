@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { AwsClient, AwsV4Signer } from 'aws4fetch'
+import { registerMcp, TEXT_HEAD_PROBE } from './mcp-core.js'
 
 // ---------- format helpers ----------
 function formatSize(bytes) {
@@ -477,6 +478,7 @@ app.get('/api/plan', authGuard, async (c) => c.json(await fetchPlan(c)))
 
 // ---------- 桶统计缓存（Cache API，1 小时） ----------
 const STATS_TTL = 3600
+const MAX_STATS_SCAN = 50000 // 超大桶保护：统计/搜索最多扫描的对象数（免费版另有子请求预算限制，见 /api/search）
 // 缓存 key 按账号隔离，避免不同账号的同名桶串缓存；v2 含 byType 分类统计
 const statsCacheKey = (c, bucket) =>
   new Request(
@@ -572,6 +574,8 @@ app.get('/api/stats', authGuard, async (c) => {
   let objects = 0
   let size = 0
   let lastModified = null
+  let scanned = 0
+  let truncated = false
   const byType = newByType()
   let token = null
   do {
@@ -583,6 +587,7 @@ app.get('/api/stats', authGuard, async (c) => {
     const xml = await res.text()
     for (const obj of xmlBlocks(xml, 'Contents')) {
       objects++
+      scanned++
       const sz = Number(xmlPick(obj, 'Size')) || 0
       size += sz
       const t = typeOfKey(xmlPick(obj, 'Key') || '')
@@ -592,6 +597,11 @@ app.get('/api/stats', authGuard, async (c) => {
       if (lm && (!lastModified || lm > lastModified)) lastModified = lm
     }
     token = xmlPick(xml, 'NextContinuationToken') || null
+    // 超大桶保护：最多扫描 MAX_STATS_SCAN 个对象，超出后统计标记 truncated（数字为下限估计）
+    if (token && scanned >= MAX_STATS_SCAN) {
+      truncated = true
+      token = null
+    }
   } while (token)
 
   const stats = {
@@ -601,6 +611,7 @@ app.get('/api/stats', authGuard, async (c) => {
     lastModified,
     modifiedText: lastModified ? formatTime(lastModified) : null,
     byType,
+    truncated,
     computedAt: new Date().toISOString(),
   }
   await putCachedStats(c, bucket, stats)
@@ -1883,6 +1894,221 @@ app.post('/api/extract-batch', authGuard, async (c) => {
     }
   }
   return c.json({ done, failed })
+})
+
+// ---------- MCP 只读服务（/mcp，Bearer MCP_TOKEN；未配置则端点关闭） ----------
+// 工具集与协议见 src/mcp-core.js；安全设计见 docs/mcp-readonly-design.md
+function mcpBackend(c) {
+  if (!c._account || !c._r2) return null
+  const notFound = (op) => new Error(`${op} failed: 文件不存在？可用 list_objects/search_objects 确认路径`)
+  return {
+    async listBuckets() {
+      const res = await c._r2.fetch(c._s3Base + '/')
+      if (!res.ok) throw new Error(`ListBuckets failed: ${res.status}`)
+      const xml = await res.text()
+      const names = xmlBlocks(xml, 'Bucket').map((b) => xmlPick(b, 'Name')).filter(Boolean).sort()
+      const buckets = await Promise.all(
+        names.map(async (name) => {
+          const st = await getCachedStats(c, name)
+          return st ? { name, objects: st.objects, sizeText: st.sizeText } : { name }
+        })
+      )
+      return { account: c._account.name || c._account.accountId, buckets }
+    },
+    async bucketStats(bucket) {
+      const cached = await getCachedStats(c, bucket)
+      if (cached) return { ...cached, bucket, cached: true }
+      let objects = 0
+      let size = 0
+      let lastModified = null
+      let scanned = 0
+      let truncated = false
+      const byType = newByType()
+      let token = null
+      do {
+        const u = new URL(`${c._s3Base}/${bucket}`)
+        u.searchParams.set('list-type', '2')
+        if (token) u.searchParams.set('continuation-token', token)
+        const res = await c._r2.fetch(u)
+        if (!res.ok) throw new Error(`ListObjects failed: ${res.status}`)
+        const xml = await res.text()
+        for (const obj of xmlBlocks(xml, 'Contents')) {
+          objects++
+          scanned++
+          const sz = Number(xmlPick(obj, 'Size')) || 0
+          size += sz
+          const t = typeOfKey(xmlPick(obj, 'Key') || '')
+          byType[t].count++
+          byType[t].size += sz
+          const lm = xmlPick(obj, 'LastModified')
+          if (lm && (!lastModified || lm > lastModified)) lastModified = lm
+        }
+        token = xmlPick(xml, 'NextContinuationToken') || null
+        if (token && scanned >= MAX_STATS_SCAN) {
+          truncated = true
+          token = null
+        }
+      } while (token)
+      const stats = {
+        bucket,
+        objects,
+        size,
+        sizeText: formatSize(size),
+        lastModified,
+        byType,
+        truncated,
+      }
+      await putCachedStats(c, bucket, stats)
+      return stats
+    },
+    async listObjects(bucket, prefix) {
+      const u = new URL(`${c._s3Base}/${bucket}`)
+      u.searchParams.set('list-type', '2')
+      u.searchParams.set('delimiter', '/')
+      u.searchParams.set('max-keys', '1000')
+      if (prefix) u.searchParams.set('prefix', prefix)
+      const res = await c._r2.fetch(u)
+      if (res.status === 404) throw new Error(`存储桶 ${bucket} 不存在`)
+      if (!res.ok) throw new Error(`ListObjects failed: ${res.status}`)
+      const xml = await res.text()
+      const dirs = xmlBlocks(xml, 'CommonPrefixes')
+        .map((b) => xmlPick(b, 'Prefix'))
+        .filter((p) => p && p !== prefix)
+        .map((p) => ({ name: p.slice(prefix.length).replace(/\/$/, ''), path: p }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+      const files = []
+      for (const obj of xmlBlocks(xml, 'Contents')) {
+        const key = xmlPick(obj, 'Key')
+        if (!key || key === prefix) continue
+        const size = Number(xmlPick(obj, 'Size')) || 0
+        const { url, presigned } = await fileUrl(c, bucket, key)
+        files.push({
+          name: key.slice(prefix.length),
+          path: key,
+          size,
+          sizeText: formatSize(size),
+          modified: xmlPick(obj, 'LastModified') || null,
+          url,
+          presigned,
+        })
+      }
+      files.sort((a, b) => a.name.localeCompare(b.name))
+      return { bucket, prefix, dirs, files, truncated: xmlPick(xml, 'IsTruncated') === 'true' }
+    },
+    async searchObjects(bucket, q, prefix, limit) {
+      const needle = q.toLowerCase()
+      const files = []
+      let more = false
+      let token = ''
+      let scanned = 0
+      while (true) {
+        const u = new URL(`${c._s3Base}/${bucket}`)
+        u.searchParams.set('list-type', '2')
+        u.searchParams.set('max-keys', '1000')
+        if (prefix) u.searchParams.set('prefix', prefix)
+        if (token) u.searchParams.set('continuation-token', token)
+        const res = await c._r2.fetch(u)
+        if (res.status === 404) throw new Error(`存储桶 ${bucket} 不存在`)
+        if (!res.ok) throw new Error(`ListObjects failed: ${res.status}`)
+        const xml = await res.text()
+        let hit = false
+        for (const obj of xmlBlocks(xml, 'Contents')) {
+          scanned++
+          const key = xmlPick(obj, 'Key')
+          if (!key || key.endsWith('/')) continue
+          if (!key.toLowerCase().includes(needle)) continue
+          const name = key.split('/').pop()
+          const size = Number(xmlPick(obj, 'Size')) || 0
+          const { url, presigned } = await fileUrl(c, bucket, key)
+          files.push({
+            name,
+            path: key,
+            dir: key.slice(0, key.length - name.length),
+            size,
+            sizeText: formatSize(size),
+            url,
+            presigned,
+          })
+          if (files.length >= limit) {
+            hit = true
+            break
+          }
+        }
+        const isTruncated = xmlPick(xml, 'IsTruncated') === 'true'
+        if (hit) {
+          more = isTruncated
+          break
+        }
+        if (!isTruncated || scanned >= MAX_STATS_SCAN) {
+          more = isTruncated && scanned >= MAX_STATS_SCAN
+          break
+        }
+        token = xmlPick(xml, 'NextContinuationToken')
+        if (!token) break
+      }
+      return { files, more, scanned }
+    },
+    async getFileInfo(bucket, key) {
+      const res = await c._r2.fetch(objUrl(c, bucket, key), { method: 'HEAD' })
+      if (res.status === 404) throw notFound('HeadObject')
+      if (!res.ok) throw new Error(`HeadObject failed: ${res.status}`)
+      const size = Number(res.headers.get('content-length')) || 0
+      const { url, presigned } = await fileUrl(c, bucket, key)
+      return {
+        bucket,
+        key,
+        size,
+        sizeText: formatSize(size),
+        contentType: res.headers.get('content-type') || '',
+        etag: (res.headers.get('etag') || '').replace(/"/g, ''),
+        modified: res.headers.get('last-modified') || null,
+        url,
+        presigned,
+      }
+    },
+    async readTextFile(bucket, key, maxChars) {
+      const head = await c._r2.fetch(objUrl(c, bucket, key), { method: 'HEAD' })
+      if (head.status === 404) throw notFound('HeadObject')
+      if (!head.ok) throw new Error(`HEAD failed: ${head.status}`)
+      const totalSize = Number(head.headers.get('content-length')) || 0
+      if (totalSize > TEXT_CAP) {
+        throw new Error(`文件 ${formatSize(totalSize)} 超过 2MB 文本读取上限，请用 get_file_url 获取下载直链`)
+      }
+      const res = await c._r2.fetch(objUrl(c, bucket, key))
+      if (!res.ok) throw new Error(`GET failed: ${res.status}`)
+      const text = await res.text()
+      if (text.slice(0, TEXT_HEAD_PROBE).includes('\u0000')) {
+        throw new Error('内容疑似二进制文件，请用 get_file_info / get_file_url 获取下载直链')
+      }
+      const truncated = text.length > maxChars
+      const { url, presigned } = await fileUrl(c, bucket, key)
+      return {
+        text: truncated ? text.slice(0, maxChars) : text,
+        truncated,
+        totalChars: text.length,
+        totalSize,
+        url,
+        presigned,
+      }
+    },
+    async getFileUrl(bucket, key, expiresIn) {
+      const base = c._cdnMap[bucket]
+      if (base) {
+        return { url: `${base.replace(/\/+$/, '')}/${key.split('/').map(encodeURIComponent).join('/')}`, presigned: false }
+      }
+      const signed = await c._r2.sign(
+        new Request(`${c._s3Base}/${bucket}/${key.split('/').map(encodeURIComponent).join('/')}?X-Amz-Expires=${expiresIn}`),
+        { aws: { signQuery: true } }
+      )
+      return { url: signed.url, presigned: true, expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() }
+    },
+  }
+}
+
+registerMcp(app, {
+  version: '2.18.0', // 与 package.json version 保持同步
+  getToken: (c) => c.env.MCP_TOKEN,
+  makeBackend: mcpBackend,
 })
 
 export default app

@@ -239,6 +239,41 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 
 详细说明、Free/Paid 计划对比与 KV 配额说明见 [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md)。
 
+## MCP 服务（外部 Agent 接入）
+
+内置只读 MCP（Model Context Protocol）服务端，端点 `POST /mcp`（Streamable HTTP，无状态），可把 R2 存储交给外部 Agent（WorkBuddy / Claude / Cursor 等）查询与管理。设计文档见 [docs/mcp-readonly-design.md](docs/mcp-readonly-design.md)。
+
+- 启用：设置环境变量 `MCP_TOKEN`（建议 `openssl rand -hex 32` 生成）。**未设置时端点完全关闭（404）**
+- 鉴权：`Authorization: Bearer <MCP_TOKEN>`；token 错误同样返回 404，不暴露端点存在性
+- 只看「当前激活账号」，与网页登录后看到的范围一致；切换账号仍需走网页
+
+客户端接入示例（WorkBuddy 自定义连接器 / Claude / Cursor 通用）：
+
+```json
+{
+  "mcpServers": {
+    "r2-explorer": {
+      "url": "https://你的域名/mcp",
+      "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
+    }
+  }
+}
+```
+
+只读工具集（7 个）：
+
+| 工具 | 说明 |
+| --- | --- |
+| `list_buckets` | 列出所有存储桶（含缓存统计） |
+| `bucket_stats` | 单桶统计：对象数/总大小/类型分布（超大桶最多扫描 5 万对象） |
+| `list_objects` | 列出目录下一层（dirs + files，含直链） |
+| `search_objects` | 全桶递归搜索（大小写不敏感子串匹配） |
+| `get_file_info` | 文件元信息（大小/类型/ETag/直链） |
+| `read_text_file` | 读文本内容（≤2MB，默认截断 64K 字符；二进制自动拒绝） |
+| `get_file_url` | 获取下载直链（CDN 映射优先，否则 7 天预签名） |
+
+安全边界：v1 仅只读，上传/删除/移动等写操作与删桶、删除目录**不提供**；token 与登录密码相互独立，可单独轮换。写操作规划见设计文档 §9。
+
 ## 在线解压（Node/Docker 版）
 
 文件右键菜单（移动端长按）的「在线解压」：把压缩包整包解到桶内指定目录（默认 `当前目录/压缩包名/`，可改）。服务器后台任务执行，前端轮询进度，失败条目保留明细不拖垮整体。支持 zip / rar / 7z / tar / tar.gz（apk、ipa、jar、xapk、epub 等 zip 系容器同样可解）。
