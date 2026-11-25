@@ -20,6 +20,7 @@ A lightweight file manager for Cloudflare R2: bind **multiple Cloudflare account
 - **Bucket deletion:** delete empty buckets directly from the bucket card (requires typing the full bucket name as a second confirmation to prevent accidents)
 - **Direct-link policy:** buckets with a custom domain configured in the account's `CDN mapping` use CDN links; unmapped buckets automatically get a **7-day presigned direct link**
 - **QR codes:** generate a QR code in one click from the file row, context menu, grid card, or preview top bar — scan it on your phone to open or download the direct link, or save the QR image
+- **MCP server:** built-in read-only MCP endpoint (`/mcp`); external agents (WorkBuddy / Claude / Cursor, etc.) can query your R2 storage with just a URL + token
 - **Deployment:** Cloudflare Workers (recommended, static asset hosting) or self-hosted Docker
 
 ## Screenshots
@@ -239,6 +240,41 @@ The "Offline Download" button in the file list toolbar: paste an http/https dire
 
 For details, Free/Paid plan comparison, and KV quota notes, see [docs/webdav-and-offline-download.md](docs/webdav-and-offline-download.md).
 
+## MCP Server (for External Agents)
+
+A built-in read-only MCP (Model Context Protocol) server exposes the endpoint `POST /mcp` (Streamable HTTP, stateless), letting external agents (WorkBuddy / Claude / Cursor, etc.) query and manage your R2 storage. Design details: [docs/mcp-readonly-design.md](docs/mcp-readonly-design.md) (Chinese).
+
+- **Enable:** set the `MCP_TOKEN` environment variable (generate one with `openssl rand -hex 32`). **Without it the endpoint stays fully disabled (404)**
+- **Auth:** `Authorization: Bearer <MCP_TOKEN>`; a wrong token also returns 404 so the endpoint's existence is never revealed
+- The server sees only the **currently active account**, the same scope as the web UI; switching accounts still requires the web UI
+
+Client configuration example (same for WorkBuddy custom connectors / Claude / Cursor):
+
+```json
+{
+  "mcpServers": {
+    "r2-explorer": {
+      "url": "https://your-domain/mcp",
+      "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
+    }
+  }
+}
+```
+
+Read-only tool set (7 tools):
+
+| Tool | Description |
+| --- | --- |
+| `list_buckets` | List all buckets under the active account (with cached stats) |
+| `bucket_stats` | Per-bucket stats: object count / total size / type breakdown (scans at most 50k objects) |
+| `list_objects` | List one directory level (dirs + files, with direct links) |
+| `search_objects` | Recursive bucket-wide search (case-insensitive substring match) |
+| `get_file_info` | File metadata (size / type / ETag / direct link) |
+| `read_text_file` | Read text content (≤2MB, truncated at 64K chars by default; binary files are rejected) |
+| `get_file_url` | Get a download link (CDN mapping first, otherwise a 7-day presigned URL) |
+
+Security boundary: v1 is read-only — upload/delete/move, bucket deletion, and directory deletion are **not exposed**; the token is independent from the login password and can be rotated on its own. Write-operation plans are in §9 of the design doc.
+
 ## Online Extraction (Node/Docker Version)
 
 The "Extract" action in the file context menu (long-press on mobile): extracts an archive in full into a directory inside the bucket (default `current-dir/archive-name/`, configurable). Extraction runs as a server-side background task with the frontend polling for progress; failed entries are reported individually without breaking the whole run. Supports zip / rar / 7z / tar / tar.gz (zip-family containers such as apk, ipa, jar, xapk, and epub are also supported).
@@ -249,25 +285,4 @@ The "Extract" action in the file context menu (long-press on mobile): extracts a
 
 ## API
 
-| Method | Path | Description |
-| --- | --- | --- |
-| POST | `/api/login` | `{ password }`; sets the session cookie on success |
-| POST | `/api/logout` | Clears the cookie |
-| GET | `/api/me` | Session check |
-| GET | `/api/accounts` | List accounts (secrets returned masked) |
-| POST | `/api/accounts` | Bind a new account (credentials verified before saving) |
-| PUT | `/api/accounts/:id` | Edit an account (name/CDN mapping/keys; empty keys are kept unchanged) |
-| DELETE | `/api/accounts/:id` | Unbind an account |
-| POST | `/api/accounts/:id/activate` | Make this account the active one |
-| GET | `/api/buckets` | List all buckets under the active account |
-| POST | `/api/buckets` | Create a bucket `{ name }` (under the active account; lowercase letters/digits/hyphens only) |
-| DELETE | `/api/buckets/:name` | Delete a bucket (must be empty; the frontend requires typing the full bucket name to confirm) |
-| GET | `/api/list?bucket=x&prefix=a/` | List a directory (folders + files + direct links) |
-| GET | `/api/info?bucket=x&key=a/b` | Single-file details (size/time/ETag/type) |
-| DELETE | `/api/object?bucket=x&key=a/b` | Delete a single file |
-| POST | `/api/delete-batch` | `{ bucket, keys: [] }` batch delete (≤500) |
-| POST | `/api/move` | `{ bucket, items: [{ from, to }] }` move/rename (≤100) |
-| GET | `/api/text?bucket=x&key=a/b` | Text preview proxy (≤2MB) |
-| GET | `/api/zip` / `/api/zip-entry` | Archive directory / entry reader |
-| POST | `/api/upload` | Raw body direct upload, single file ≤100MB |
-| POST | `/api/multipart/init` / `part` / `complete` / `abort` | Multipart upload (>50MB switches automatically; parts ≤64MB, unlimited count) |
+The full HTTP API reference (auth, account management, buckets, file CRUD, uploads, archives, offline download, transcoding, the MCP endpoint) lives in its own document: [docs/api.md](docs/api.md) (Chinese).

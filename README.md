@@ -20,6 +20,7 @@
 - 删除桶：桶卡片上可删除空存储桶（需输入完整桶名二次确认），防止误删
 - 直链策略：各账号的 `CDN 映射` 里配置了自定义域的桶用 CDN 链接；未配置的桶自动生成 **7 天预签名直链**
 - 二维码：文件行右侧、右键菜单、网格卡片、预览顶栏一键生成二维码，手机扫码即可打开 / 下载直链，也可保存二维码图片
+- MCP 服务：内置只读 MCP 端点（`/mcp`），外部 Agent（WorkBuddy / Claude / Cursor 等）配一个 URL + Token 即可查询 R2 存储
 - 部署：Cloudflare Workers（推荐，静态资产托管）或 Docker 自托管
 
 ## 界面截图
@@ -284,25 +285,4 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 
 ## API
 
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| POST | `/api/login` | `{ password }`，成功后种 Cookie |
-| POST | `/api/logout` | 清除 Cookie |
-| GET | `/api/me` | 会话检查 |
-| GET | `/api/accounts` | 账号列表（密钥只返回掩码） |
-| POST | `/api/accounts` | 绑定新账号（先验证凭证再保存） |
-| PUT | `/api/accounts/:id` | 编辑账号（名称/CDN 映射/密钥，密钥留空不改） |
-| DELETE | `/api/accounts/:id` | 解绑账号 |
-| POST | `/api/accounts/:id/activate` | 切换为当前使用账号 |
-| GET | `/api/buckets` | 列出当前账号下所有桶 |
-| POST | `/api/buckets` | 新建存储桶 `{ name }`（当前账号下，名称仅小写字母/数字/连字符） |
-| DELETE | `/api/buckets/:name` | 删除存储桶（桶必须为空，前端需输入完整桶名二次确认） |
-| GET | `/api/list?bucket=x&prefix=a/` | 列目录（文件夹 + 文件 + 直链） |
-| GET | `/api/info?bucket=x&key=a/b` | 单文件详情（大小/时间/ETag/类型） |
-| DELETE | `/api/object?bucket=x&key=a/b` | 删除单个文件 |
-| POST | `/api/delete-batch` | `{ bucket, keys: [] }` 批量删除（≤500） |
-| POST | `/api/move` | `{ bucket, items: [{ from, to }] }` 移动/重命名（≤100） |
-| GET | `/api/text?bucket=x&key=a/b` | 文本预览代理（≤2MB） |
-| GET | `/api/zip` / `/api/zip-entry` | 压缩包目录 / 包内文件读取 |
-| POST | `/api/upload` | 原始 body 直传，单文件 ≤100MB |
-| POST | `/api/multipart/init` / `part` / `complete` / `abort` | 分片上传（>50MB 自动走此通道，分片 ≤64MB，数量不限） |
+完整的 HTTP API 参考（认证、账号管理、桶操作、文件增删改查、上传、压缩包、离线下载、转码、MCP 端点等）已独立成文档：[docs/api.md](docs/api.md)。
