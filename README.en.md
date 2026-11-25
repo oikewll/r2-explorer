@@ -242,7 +242,7 @@ For details, Free/Paid plan comparison, and KV quota notes, see [docs/webdav-and
 
 ## MCP Server (for External Agents)
 
-A built-in read-only MCP (Model Context Protocol) server exposes the endpoint `POST /mcp` (Streamable HTTP, stateless), letting external agents (WorkBuddy / Claude / Cursor, etc.) query and manage your R2 storage. Design details: [docs/mcp-readonly-design.md](docs/mcp-readonly-design.md) (Chinese).
+A built-in read-only MCP (Model Context Protocol) server exposes the endpoint `POST /file/mcp` (Streamable HTTP, stateless), letting external agents (WorkBuddy / Claude / Cursor, etc.) query and manage your R2 storage. Design details: [docs/mcp-readonly-design.md](docs/mcp-readonly-design.md) (Chinese).
 
 - **Enable:** set the `MCP_TOKEN` environment variable (generate one with `openssl rand -hex 32`). **Without it the endpoint stays fully disabled (404)**
 - **Auth:** `Authorization: Bearer <MCP_TOKEN>`; a wrong token also returns 404 so the endpoint's existence is never revealed
@@ -254,7 +254,7 @@ Client configuration example (same for WorkBuddy custom connectors / Claude / Cu
 {
   "mcpServers": {
     "r2-explorer": {
-      "url": "https://your-domain/mcp",
+      "url": "https://your-domain/file/mcp",
       "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
     }
   }

@@ -242,7 +242,7 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 
 ## MCP 服务（外部 Agent 接入）
 
-内置只读 MCP（Model Context Protocol）服务端，端点 `POST /mcp`（Streamable HTTP，无状态），可把 R2 存储交给外部 Agent（WorkBuddy / Claude / Cursor 等）查询与管理。设计文档见 [docs/mcp-readonly-design.md](docs/mcp-readonly-design.md)。
+内置只读 MCP（Model Context Protocol）服务端，端点 `POST /file/mcp`（Streamable HTTP，无状态），可把 R2 存储交给外部 Agent（WorkBuddy / Claude / Cursor 等）查询与管理。设计文档见 [docs/mcp-readonly-design.md](docs/mcp-readonly-design.md)。
 
 - 启用：设置环境变量 `MCP_TOKEN`（建议 `openssl rand -hex 32` 生成）。**未设置时端点完全关闭（404）**
 - 鉴权：`Authorization: Bearer <MCP_TOKEN>`；token 错误同样返回 404，不暴露端点存在性
@@ -254,7 +254,7 @@ rclone ls :webdav, url=http://localhost:3000/dav/, user=any, pass=$(rclone obscu
 {
   "mcpServers": {
     "r2-explorer": {
-      "url": "https://你的域名/mcp",
+      "url": "https://你的域名/file/mcp",
       "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
     }
   }

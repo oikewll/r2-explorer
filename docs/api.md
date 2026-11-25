@@ -108,7 +108,7 @@ Node/Docker 版支持 multipart 分片（约 80GB 上限，并发 2）；Workers
 
 ## MCP 端点
 
-`POST /mcp` —— MCP 协议（JSON-RPC 2.0 over Streamable HTTP），Bearer `MCP_TOKEN` 鉴权，只读工具集 7 个。启用方式、客户端接入示例与安全边界见 [README「MCP 服务」章节](../README.md#mcp-服务外部-agent-接入)与 [docs/mcp-readonly-design.md](mcp-readonly-design.md)。
+`POST /file/mcp` —— MCP 协议（JSON-RPC 2.0 over Streamable HTTP），Bearer `MCP_TOKEN` 鉴权，只读工具集 7 个。启用方式、客户端接入示例与安全边界见 [README「MCP 服务」章节](../README.md#mcp-服务外部-agent-接入)与 [docs/mcp-readonly-design.md](mcp-readonly-design.md)。
 
 ## WebDAV
 

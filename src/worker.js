@@ -2106,7 +2106,8 @@ function mcpBackend(c) {
 }
 
 registerMcp(app, {
-  version: '2.18.0', // 与 package.json version 保持同步
+  version: '2.18.1', // 与 package.json version 保持同步
+  path: '/file/mcp', // 不用 /mcp：r2.quputech.com 域名上 quputech-mcp Worker（官网服务）占用了该路径
   getToken: (c) => c.env.MCP_TOKEN,
   makeBackend: mcpBackend,
 })

@@ -193,7 +193,7 @@ const errorContent = (msg) => ({ content: [{ type: 'text', text: msg }], isError
 
 // ---------- 注册 ----------
 
-export function registerMcp(app, { version = '1.0.0', getToken, makeBackend }) {
+export function registerMcp(app, { version = '1.0.0', path = '/mcp', getToken, makeBackend }) {
   const handle = async (c) => {
     // 鉴权：未配置 token 或校验失败一律 404（与「未启用」不可区分）
     const token = getToken(c)
@@ -258,7 +258,7 @@ export function registerMcp(app, { version = '1.0.0', getToken, makeBackend }) {
     }
   }
 
-  app.on('POST', ['/mcp'], handle)
-  app.on('GET', ['/mcp'], handle)
-  app.on('DELETE', ['/mcp'], handle)
+  app.on('POST', [path], handle)
+  app.on('GET', [path], handle)
+  app.on('DELETE', [path], handle)
 }

@@ -1,11 +1,12 @@
 # R2 Explorer MCP 服务设计（只读版 v1）
 
-> 状态：已评审，随 v2.18.0 实施（2026-11-25）
+> 状态：已评审，随 v2.18.1 实施（2026-11-25）
+> 变更记录：端点路径由设计时的 `/mcp` 调整为 `/file/mcp`——r2.quputech.com 域名上已部署的 `quputech-mcp` Worker（官网服务）占用了 `/mcp` 路由，本服务避开冲突。
 > 范围：为外部 Agent（WorkBuddy / Claude / Cursor 等）暴露只读 MCP 端点，覆盖「查看存储情况、浏览/搜索文件、读取文本内容、获取下载直链」场景。写操作不在本版范围。
 
 ## 1. 背景与目标
 
-R2 Explorer 已有完整的 Web UI + REST API，但 API 依赖 Cookie 登录流程，外部 Agent 无法直接使用。MCP（Model Context Protocol）是当前主流的 Agent 工具接入协议，提供一个 `/mcp` 端点后，任意 MCP 客户端配一个 URL + Token 即可让 Agent 管理/查询 R2 存储。
+R2 Explorer 已有完整的 Web UI + REST API，但 API 依赖 Cookie 登录流程，外部 Agent 无法直接使用。MCP（Model Context Protocol）是当前主流的 Agent 工具接入协议，提供一个 `/file/mcp` 端点后，任意 MCP 客户端配一个 URL + Token 即可让 Agent 管理/查询 R2 存储。
 
 **目标**
 - 双部署可用：Node/Docker（`server.js`）与 Cloudflare Workers（`worker.js`）都暴露相同工具集
@@ -23,7 +24,7 @@ R2 Explorer 已有完整的 Web UI + REST API，但 API 依赖 Cookie 登录流�
 
 ```
 外部 Agent (MCP Client)
-   │  JSON-RPC 2.0 over HTTP POST /mcp
+   │  JSON-RPC 2.0 over HTTP POST /file/mcp
    │  Authorization: Bearer <MCP_TOKEN>
    ▼
 src/mcp-core.js  ← 协议处理 + 工具 schema + 参数校验（部署无关）
@@ -50,7 +51,7 @@ Cloudflare R2 S3 API
 - 新增环境变量 `MCP_TOKEN`：
   - Node：env 变量（docker-compose / systemd 注入）
   - Workers：`wrangler secret put MCP_TOKEN`（不进 wrangler.prod.toml）
-- **未设置 `MCP_TOKEN` 时，`/mcp` 返回 404**（连端点存在性都不暴露，而不是 401）
+- **未设置 `MCP_TOKEN` 时，`/file/mcp` 返回 404**（连端点存在性都不暴露，而不是 401）
 - 验证：`Authorization: Bearer <token>`，常量时间比较（Node 用 `crypto.timingSafeEqual`；Workers 复用现有 `timingSafeEqualStr`）
 - 不复用 `AUTH_PASSWORD`：token 会明文写进各客户端配置文件，必须与主密码隔离，泄露时可单独吊销轮换
 
@@ -58,11 +59,11 @@ Cloudflare R2 S3 API
 MCP 客户端只会透传静态 header，不会执行登录表单流程。静态 Bearer Token 是各客户端（WorkBuddy 自定义连接器、Claude、Cursor）唯一通用方式。
 
 ### 与 Web 鉴权的关系
-`/mcp` 路由**不挂**现有 `authGuard`（Cookie 中间件），自带独立 Bearer 校验；也不要求先登录 Web。Token 权限 = 「当前激活账号」的只读视角，与 Web 登录后看到的范围一致（多账号切换仍以 Web 端激活的账号为准）。
+`/file/mcp` 路由**不挂**现有 `authGuard`（Cookie 中间件），自带独立 Bearer 校验；也不要求先登录 Web。Token 权限 = 「当前激活账号」的只读视角，与 Web 登录后看到的范围一致（多账号切换仍以 Web 端激活的账号为准）。
 
 ## 4. 协议实现（手写，零新依赖）
 
-只实现 Streamable HTTP 的最小合规子集，`POST /mcp` 单一端点：
+只实现 Streamable HTTP 的最小合规子集，`POST /file/mcp` 单一端点：
 
 | JSON-RPC method | 行为 |
 |---|---|
@@ -155,7 +156,7 @@ WorkBuddy 自定义连接器 / Claude / Cursor 通用配置：
 {
   "mcpServers": {
     "r2-explorer": {
-      "url": "https://r2.quputech.com/mcp",
+      "url": "https://r2.quputech.com/file/mcp",
       "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
     }
   }
@@ -165,7 +166,7 @@ WorkBuddy 自定义连接器 / Claude / Cursor 通用配置：
 ### 本地验证
 ```bash
 # initialize
-curl -s http://localhost:3000/mcp -H 'Authorization: Bearer xxx' \
+curl -s http://localhost:3000/file/mcp -H 'Authorization: Bearer xxx' \
   -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
 # tools/list / tools/call 同理
 ```
