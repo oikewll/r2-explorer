@@ -76,7 +76,7 @@ export default function Buckets() {
         </div>
         <StoragePanel buckets={buckets} />
         {/* 页脚：跟随左栏，左对齐 */}
-        <Footer align="left" className="mt-3 pb-6" />
+        <Footer align="center" showName={false} className="mt-3 pb-6" />
       </aside>
 
       {/* 右栏：存储桶列表 */}
