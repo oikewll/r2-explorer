@@ -707,6 +707,7 @@ export default function Explorer({ route }) {
                   onToggle={() => toggleSelect(f.path)}
                   onOpen={() => openFile(f)}
                   onCopy={() => copyLink(f)}
+                  onQr={() => openQr(f)}
                   onRename={() => setRenameItem({ ...f, isDir: false })}
                   onDelete={() => askDelete([{ ...f, isDir: false }])}
                   onCtxMenu={openItemCtx(f)}
