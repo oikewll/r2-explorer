@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { refreshDownloads } from '../lib/downloads'
 import { fmtSize } from '../lib/format'
 import Modal from './Modal'
@@ -14,12 +15,12 @@ const STATUS_TEXT = {
   cancelled: { text: '已取消', cls: 'text-ink2' },
 }
 
-function TaskRow({ t, onToast }) {
-  const running = t.status === 'running'
-  const failed = t.status === 'failed'
-  const completed = t.status === 'completed'
-  const pct = t.size > 0 ? Math.min(100, Math.round((t.downloaded / t.size) * 100)) : 0
-  const st = STATUS_TEXT[t.status] || STATUS_TEXT.queued
+function TaskRow({ task, onToast }) {
+  const running = task.status === 'running'
+  const failed = task.status === 'failed'
+  const completed = task.status === 'completed'
+  const pct = task.size > 0 ? Math.min(100, Math.round((task.downloaded / task.size) * 100)) : 0
+  const st = STATUS_TEXT[task.status] || STATUS_TEXT.queued
 
   const act = async (fn, okMsg) => {
     try {
@@ -34,25 +35,25 @@ function TaskRow({ t, onToast }) {
   return (
     <div className={`rounded-xl px-3 py-2.5 ${failed ? 'bg-danger-soft' : 'bg-bg'}`}>
       <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1 truncate text-[13px] font-medium" title={t.key}>
-          {t.name}
+        <div className="min-w-0 flex-1 truncate text-[13px] font-medium" title={task.key}>
+          {task.name}
         </div>
-        {(failed || t.status === 'cancelled' || completed) && (
+        {(failed || task.status === 'cancelled' || completed) && (
           <button
             className="shrink-0 text-[12px] text-ink2 hover:text-accent"
-            onClick={() => act(() => api(`/api/download/tasks/${t.id}/retry`, { method: 'POST' }), '已重新加入队列')}
+            onClick={() => act(() => api(`/api/download/tasks/${task.id}/retry`, { method: 'POST' }), t('已重新加入队列'))}
           >
-            重试
+            {t('重试')}
           </button>
         )}
         <button
           className="shrink-0 text-[12px] text-ink2 hover:text-danger"
-          onClick={() => act(() => api(`/api/download/tasks/${t.id}`, { method: 'DELETE' }))}
+          onClick={() => act(() => api(`/api/download/tasks/${task.id}`, { method: 'DELETE' }))}
         >
-          {running ? '取消' : '删除'}
+          {running ? t('取消') : t('删除')}
         </button>
-        <span className={`shrink-0 text-[12px] font-medium ${st.cls}`} title={t.error || ''}>
-          {st.text}
+        <span className={`shrink-0 text-[12px] font-medium ${st.cls}`} title={task.error || ''}>
+          {t(st.text)}
         </span>
       </div>
       <div className="mt-1.5 flex items-center gap-2">
@@ -65,21 +66,21 @@ function TaskRow({ t, onToast }) {
           />
         </div>
         <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-ink2">
-          {completed ? '100%' : t.size > 0 ? pct + '%' : '—'}
+          {completed ? '100%' : task.size > 0 ? pct + '%' : '—'}
         </span>
         <span className="w-28 shrink-0 text-right text-[11px] tabular-nums text-ink2/70">
           {running
-            ? `${fmtSize(t.downloaded)} · ${fmtSize(t.speed)}/s`
+            ? `${fmtSize(task.downloaded)} · ${fmtSize(task.speed)}/s`
             : completed
-              ? fmtSize(t.size >= 0 ? t.size : t.downloaded)
-              : t.downloaded > 0
-                ? fmtSize(t.downloaded)
+              ? fmtSize(task.size >= 0 ? task.size : task.downloaded)
+              : task.downloaded > 0
+                ? fmtSize(task.downloaded)
                 : ''}
         </span>
       </div>
-      {failed && t.error && (
-        <div className="mt-1 truncate text-[12px] text-danger/80" title={t.error}>
-          {t.error}
+      {failed && task.error && (
+        <div className="mt-1 truncate text-[12px] text-danger/80" title={task.error}>
+          {task.error}
         </div>
       )}
     </div>
@@ -87,6 +88,7 @@ function TaskRow({ t, onToast }) {
 }
 
 export default function DownloadModal({ onClose }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const target = useStore((s) => s.downloadTarget)
   const downloads = useStore((s) => s.downloads)
@@ -126,8 +128,8 @@ export default function DownloadModal({ onClose }) {
 
   const submit = async () => {
     const u = url.trim()
-    if (!u) return toast('请粘贴下载链接', 'error')
-    if (!/^https?:\/\//i.test(u)) return toast('仅支持 http/https 直链', 'error')
+    if (!u) return toast(t('请粘贴下载链接'), 'error')
+    if (!/^https?:\/\//i.test(u)) return toast(t('仅支持 http/https 直链'), 'error')
     setSubmitting(true)
     try {
       await api('/api/download/tasks', {
@@ -139,7 +141,7 @@ export default function DownloadModal({ onClose }) {
       setNameTouched(false)
       setProbe(null)
       setProbeErr('')
-      toast('任务已创建')
+      toast(t('任务已创建'))
       refreshDownloads()
     } catch (e) {
       if (e.message !== 'unauthorized') toast(e.message, 'error')
@@ -151,43 +153,43 @@ export default function DownloadModal({ onClose }) {
   const clearFinished = async () => {
     try {
       const { removed } = await api('/api/download/clear', { method: 'POST' })
-      if (removed) toast(`已清理 ${removed} 个任务`)
+      if (removed) toast(t('已清理 {n} 个任务', { n: removed }))
       refreshDownloads()
     } catch (e) {
       if (e.message !== 'unauthorized') toast(e.message, 'error')
     }
   }
 
-  const active = downloads.filter((t) => t.status === 'queued' || t.status === 'running').length
+  const active = downloads.filter((x) => x.status === 'queued' || x.status === 'running').length
   const settled = downloads.length - active
 
   return (
-    <Modal title="离线下载" onClose={onClose} width="max-w-[540px]">
+    <Modal title={t('离线下载')} onClose={onClose} width="max-w-[540px]">
       <div className="space-y-3.5 px-5 py-4">
         <div>
-          <div className="mb-1.5 text-[13px] font-medium text-ink2">下载链接</div>
+          <div className="mb-1.5 text-[13px] font-medium text-ink2">{t('下载链接')}</div>
           <input
             className="input"
-            placeholder="粘贴文件直链（http/https）"
+            placeholder={t('粘贴文件直链（http/https）')}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
             autoFocus
           />
-          {probing && <div className="mt-1.5 text-[12px] text-ink2/70">正在探测链接…</div>}
+          {probing && <div className="mt-1.5 text-[12px] text-ink2/70">{t('正在探测链接…')}</div>}
           {!probing && probe && (
             <div className="mt-1.5 text-[12px] text-emerald-600">
-              探测成功：{probe.size > 0 ? fmtSize(probe.size) : '大小未知'}
+              {t('探测成功：') + (probe.size > 0 ? fmtSize(probe.size) : t('大小未知'))}
               {probe.contentType ? ` · ${probe.contentType}` : ''}
-              {!probe.name && ' · 无法识别文件名，请手动填写'}
+              {!probe.name && t(' · 无法识别文件名，请手动填写')}
             </div>
           )}
-          {!probing && probeErr && <div className="mt-1.5 text-[12px] text-danger/85">{probeErr}（仍可尝试创建任务）</div>}
+          {!probing && probeErr && <div className="mt-1.5 text-[12px] text-danger/85">{probeErr + t('（仍可尝试创建任务）')}</div>}
         </div>
 
         <div>
           <div className="mb-1.5 flex items-baseline gap-1 text-[13px] text-ink2">
-            <span className="font-medium">保存到</span>
+            <span className="font-medium">{t('保存到')}</span>
             <span className="truncate" title={`${target.bucket}/${target.prefix}`}>
               {target.bucket}/{target.prefix}
             </span>
@@ -195,7 +197,7 @@ export default function DownloadModal({ onClose }) {
           <input
             ref={nameRef}
             className="input"
-            placeholder="文件名（留空自动从链接识别）"
+            placeholder={t('文件名（留空自动从链接识别）')}
             value={name}
             onChange={(e) => {
               setName(e.target.value)
@@ -207,28 +209,29 @@ export default function DownloadModal({ onClose }) {
 
         <button className="btn-primary w-full" disabled={submitting || !url.trim()} onClick={submit}>
           <UIcon name="download" size={15} />
-          开始下载
+          {t('开始下载')}
         </button>
 
         <div className="flex items-center justify-between pt-1">
           <div className="text-[13px] font-semibold">
-            任务列表{active > 0 && <span className="ml-1.5 text-[12px] font-normal text-accent">{active} 个进行中</span>}
+            {t('任务列表')}
+            {active > 0 && <span className="ml-1.5 text-[12px] font-normal text-accent">{t('{n} 个进行中', { n: active })}</span>}
           </div>
           {settled > 0 && (
             <button className="text-[12px] text-ink2 hover:text-ink" onClick={clearFinished}>
-              清理已完成
+              {t('清理已完成')}
             </button>
           )}
         </div>
 
         {downloads.length === 0 ? (
           <div className="rounded-xl bg-bg px-4 py-8 text-center text-[13px] text-ink2/70">
-            暂无任务。粘贴链接后服务器会在后台下载并转存到你的 R2 桶
+            {t('暂无任务。粘贴链接后服务器会在后台下载并转存到你的 R2 桶')}
           </div>
         ) : (
           <div className="thin-scroll max-h-[300px] space-y-2 overflow-y-auto pr-0.5">
-            {downloads.map((t) => (
-              <TaskRow key={t.id} t={t} onToast={toast} />
+            {downloads.map((task) => (
+              <TaskRow key={task.id} task={task} onToast={toast} />
             ))}
           </div>
         )}

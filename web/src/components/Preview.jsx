@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { fmtSize, fmtTime, fmtNum, categoryOf, iconType } from '../lib/format'
+import { t, useT } from '../lib/i18n'
 import { FIcon, UIcon } from './icons'
 // hljs 主题样式（重构时从 CDN 内联丢了，没它语法 token 不着色）
 import 'highlight.js/styles/github.css'
@@ -79,6 +80,7 @@ function CodeBody({ text, name }) {
 }
 
 function TopBar({ title, url, onBack, onClose, onQr, dark }) {
+  const t = useT()
   return (
     <div
       className={`flex shrink-0 items-center gap-1 px-3 py-2 ${
@@ -86,7 +88,7 @@ function TopBar({ title, url, onBack, onClose, onQr, dark }) {
       }`}
     >
       {onBack && (
-        <button className={`icon-btn ${dark ? 'hover:bg-white/10 hover:text-white' : ''}`} onClick={onBack} title="返回">
+        <button className={`icon-btn ${dark ? 'hover:bg-white/10 hover:text-white' : ''}`} onClick={onBack} title={t('返回')}>
           <UIcon name="back" size={17} />
         </button>
       )}
@@ -99,7 +101,7 @@ function TopBar({ title, url, onBack, onClose, onQr, dark }) {
           href={url}
           target="_blank"
           rel="noreferrer"
-          title="下载 / 新窗口打开"
+          title={t('下载 / 新窗口打开')}
         >
           <UIcon name="download" size={16} />
         </a>
@@ -108,12 +110,12 @@ function TopBar({ title, url, onBack, onClose, onQr, dark }) {
         <button
           className={`icon-btn ${dark ? 'hover:bg-white/10 hover:text-white' : ''}`}
           onClick={onQr}
-          title="生成二维码（手机扫码打开）"
+          title={t('生成二维码（手机扫码打开）')}
         >
           <UIcon name="qr" size={16} />
         </button>
       )}
-      <button className={`icon-btn ${dark ? 'hover:bg-white/10 hover:text-white' : ''}`} onClick={onClose} title="关闭">
+      <button className={`icon-btn ${dark ? 'hover:bg-white/10 hover:text-white' : ''}`} onClick={onClose} title={t('关闭')}>
         <UIcon name="close" size={17} />
       </button>
     </div>
@@ -121,14 +123,15 @@ function TopBar({ title, url, onBack, onClose, onQr, dark }) {
 }
 
 function DownloadPrompt({ name, url, sizeText }) {
+  const t = useT()
   return (
     <div className="flex flex-col items-center px-8 py-14 text-center">
       <FIcon type={iconType(name)} size={72} />
       <div className="mt-4 text-[15px] font-medium">{name}</div>
-      <div className="mt-1 text-[13px] text-ink2">{sizeText} · 该文件类型不支持在线预览</div>
+      <div className="mt-1 text-[13px] text-ink2">{sizeText} · {t('该文件类型不支持在线预览')}</div>
       <a className="btn-primary mt-5" href={url} target="_blank" rel="noreferrer">
         <UIcon name="download" size={15} />
-        下载文件
+        {t('下载文件')}
       </a>
     </div>
   )
@@ -151,7 +154,7 @@ function OfficeBody({ name, url }) {
     ;(async () => {
       try {
         const res = await fetch(url)
-        if (!res.ok) throw new Error('读取失败（HTTP ' + res.status + '）')
+        if (!res.ok) throw new Error(t('读取失败（HTTP {n}）', { n: res.status }))
         const buf = await res.arrayBuffer()
         if (!alive) return
         if (ext === 'docx') {
@@ -191,13 +194,13 @@ function OfficeBody({ name, url }) {
       {state.status === 'loading' && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-card text-[14px] text-ink2">
           <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-line border-t-accent" />
-          <div className="mt-4">正在加载预览…</div>
+          <div className="mt-4">{t('正在加载预览…')}</div>
         </div>
       )}
       {state.status === 'error' && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-card px-8 text-center text-[14px] text-ink2">
-          <div>预览失败：{state.error}</div>
-          <div className="mt-1 text-[12px] text-ink2/60">可下载后用本地软件打开</div>
+          <div>{t('预览失败：') + state.error}</div>
+          <div className="mt-1 text-[12px] text-ink2/60">{t('可下载后用本地软件打开')}</div>
         </div>
       )}
       {state.status === 'xlsx' ? (
@@ -242,10 +245,11 @@ function AudioCard({ name, url, sizeText }) {
 }
 
 function ZipBody({ f, kind, entries, total, truncated, onEntry, onClose, onBack }) {
+  const t = useT()
   return (
     <div className="modal-panel pop-in max-h-[86dvh] w-full max-w-[620px]">
       <TopBar
-        title={`${f.name} · ${fmtNum(total)} 个文件${truncated ? '（已截断）' : ''}`}
+        title={f.name + ' · ' + t('{n} 个文件', { n: fmtNum(total) }) + (truncated ? t('（已截断）') : '')}
         onClose={onClose}
         onBack={onBack}
       />
@@ -265,7 +269,7 @@ function ZipBody({ f, kind, entries, total, truncated, onEntry, onClose, onBack 
                     className="btn-ghost shrink-0 !px-2.5 !py-1 text-[13px] text-accent hover:!bg-accent-soft"
                     onClick={() => onEntry(e)}
                   >
-                    预览
+                    {t('预览')}
                   </button>
                 ) : (
                   <a
@@ -274,7 +278,7 @@ function ZipBody({ f, kind, entries, total, truncated, onEntry, onClose, onBack 
                     target="_blank"
                     rel="noreferrer"
                   >
-                    下载
+                    {t('下载')}
                   </a>
                 )}
               </div>
@@ -438,6 +442,7 @@ export default function Preview({ state, onClose, onBack, setPreview, onSaved, o
 
 // 文本文件：拉取 + 判断大小
 function TextBody({ bucket, path, name }) {
+  const t = useT()
   const [state, setState] = useState({ loading: true })
   useEffect(() => {
     let alive = true
@@ -447,7 +452,7 @@ function TextBody({ bucket, path, name }) {
         // 只消费一次 body：先 text 再解析错误信息（先 json() 会把成功响应的流读走）
         const text = await res.text()
         if (!res.ok) {
-          let msg = '读取失败'
+          let msg = t('读取失败')
           try {
             msg = JSON.parse(text).error || msg
           } catch {}
@@ -463,12 +468,12 @@ function TextBody({ bucket, path, name }) {
     }
   }, [bucket, path])
 
-  if (state.loading) return <div className="p-10 text-center text-[14px] text-ink2">加载中…</div>
+  if (state.loading) return <div className="p-10 text-center text-[14px] text-ink2">{t('加载中…')}</div>
   if (state.error)
     return (
       <div className="p-10 text-center text-[14px] text-ink2">
         {state.error}
-        <div className="mt-1 text-[12px] text-ink2/60">大文件请下载后查看</div>
+        <div className="mt-1 text-[12px] text-ink2/60">{t('大文件请下载后查看')}</div>
       </div>
     )
   return <CodeBody text={state.text} name={name} />
@@ -476,6 +481,7 @@ function TextBody({ bucket, path, name }) {
 
 // zip 目录加载器：加载后切换到 zip 列表视图
 function ZipLoader({ bucket, path, f, setPreview, onClose }) {
+  const t = useT()
   const [error, setError] = useState('')
   useEffect(() => {
     let alive = true
@@ -501,13 +507,13 @@ function ZipLoader({ bucket, path, f, setPreview, onClose }) {
           <div className="mt-3 max-w-[320px] text-[13px] text-red-500">{error}</div>
           <a className="btn-primary mt-5" href={f.url} target="_blank" rel="noreferrer">
             <UIcon name="download" size={15} />
-            下载文件
+            {t('下载文件')}
           </a>
         </div>
       ) : (
         <div className="flex flex-col items-center px-8 py-14 text-[14px] text-ink2">
           <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-line border-t-accent" />
-          <div className="mt-4">正在读取压缩包目录…</div>
+          <div className="mt-4">{t('正在读取压缩包目录…')}</div>
         </div>
       )}
     </div>

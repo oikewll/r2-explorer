@@ -1,5 +1,6 @@
 import { api } from './api'
 import { useStore } from './store'
+import { t } from './i18n'
 
 const MULTIPART_THRESHOLD = 50 * 1024 * 1024 // 超过 50MB 走分片
 const CHUNK_SIZE = 16 * 1024 * 1024 // 分片 16MB
@@ -33,7 +34,7 @@ function xhrSend(id, method, url, blob, onProgress, contentType) {
         } catch {}
         resolve(data)
       } else {
-        let msg = `请求失败 (${xhr.status})`
+        let msg = t('请求失败 ({n})', { n: xhr.status })
         try {
           msg = JSON.parse(xhr.responseText).error || msg
         } catch {}
@@ -42,7 +43,7 @@ function xhrSend(id, method, url, blob, onProgress, contentType) {
     }
     xhr.onerror = () => {
       activeXhrs.delete(id)
-      reject(new Error('网络错误'))
+      reject(new Error(t('网络错误')))
     }
     xhr.onabort = () => {
       activeXhrs.delete(id)
@@ -92,7 +93,7 @@ async function uploadOne(task, bucket) {
     )
     uploadId = init.uploadId
     parts = []
-    patchUpload(id, { uploadId, parts, partTag: '分片' })
+    patchUpload(id, { uploadId, parts, partTag: t('分片') })
   }
   const partCount = Math.ceil(task.size / CHUNK_SIZE)
   let uploadedBytes = parts.length * CHUNK_SIZE
@@ -139,12 +140,12 @@ async function uploadOne(task, bucket) {
 // 批量上传：串行执行，全部结束后 resolve（调用方刷新列表）
 export async function startUpload(files, bucket, prefix) {
   if (!bucket) {
-    useStore.getState().toast('请先进入某个存储桶', 'error')
+    useStore.getState().toast(t('请先进入某个存储桶'), 'error')
     return false
   }
   const fresh = [...files].filter((f) => f.size > 0)
   if (!fresh.length) {
-    useStore.getState().toast('没有可上传的文件', 'error')
+    useStore.getState().toast(t('没有可上传的文件'), 'error')
     return false
   }
   const tasks = fresh.map((file) => ({
@@ -157,7 +158,7 @@ export async function startUpload(files, bucket, prefix) {
     pct: 0,
     status: 'pending', // pending | uploading | done | fail | cancelled
     error: '',
-    partTag: file.size > MULTIPART_THRESHOLD ? '分片' : '',
+    partTag: file.size > MULTIPART_THRESHOLD ? t('分片') : '',
     cancelRequested: false,
     uploadId: null,
     parts: null,
@@ -180,9 +181,9 @@ export async function startUpload(files, bucket, prefix) {
   const ok = all.filter((t) => t.status === 'done').length
   const fail = all.filter((t) => t.status === 'fail').length
   const cancel = all.filter((t) => t.status === 'cancelled').length
-  let msg = `上传完成：${ok} 成功`
-  if (fail) msg += `，${fail} 失败`
-  if (cancel) msg += `，${cancel} 已取消`
+  let msg = t('上传完成：{n} 成功', { n: ok })
+  if (fail) msg += t('，{n} 失败', { n: fail })
+  if (cancel) msg += t('，{n} 已取消', { n: cancel })
   useStore.getState().toast(msg, fail ? 'error' : 'info')
   return fail === 0 && cancel === 0
 }
@@ -197,7 +198,7 @@ export async function retryUpload(task) {
     await uploadOne(cur, cur.bucket)
     patchUpload(task.id, { status: 'done', pct: 100 })
     useStore.getState().bumpUploadsVersion()
-    toast(`「${cur.name}」上传完成`, 'info')
+    toast(t('「{name}」上传完成', { name: cur.name }), 'info')
   } catch (e) {
     patchUpload(task.id, { status: e.message === '已取消' ? 'cancelled' : 'fail', error: e.message })
   }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { requestThumb, canThumb } from '../lib/thumbs'
 import { fmtTime } from '../lib/format'
+import { t, useT } from '../lib/i18n'
 import { FIcon, UIcon } from './icons'
 import { useCtxTrigger } from './ContextMenu'
 
@@ -96,6 +97,7 @@ function VideoThumb({ f }) {
 
 function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onQr, onRename, onDelete, onCtxMenu, children, meta }) {
   const ctx = useCtxTrigger(onCtxMenu)
+  const t = useT()
   return (
     <div
       {...ctx}
@@ -113,13 +115,13 @@ function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onQr, onRenam
         checked={selected}
         onClick={(e) => e.stopPropagation()}
         onChange={onToggle}
-        title="选择"
+        title={t('选择')}
       />
       {/* 右上角操作 */}
       <div className="absolute right-1.5 top-1.5 z-10 flex gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
         {!isDir && onQr && (
           <button
-            title="生成二维码（手机扫码打开）"
+            title={t('生成二维码（手机扫码打开）')}
             className="rounded-lg bg-bg/85 p-1.5 text-ink2 backdrop-blur transition hover:bg-ink/[0.08] hover:text-ink"
             onClick={(e) => {
               e.stopPropagation()
@@ -131,7 +133,7 @@ function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onQr, onRenam
         )}
         {!isDir && (
           <button
-            title="重命名"
+            title={t('重命名')}
             className="rounded-lg bg-bg/85 p-1.5 text-ink2 backdrop-blur transition hover:bg-ink/[0.08] hover:text-ink"
             onClick={(e) => {
               e.stopPropagation()
@@ -142,7 +144,7 @@ function Tile({ f, isDir, selected, anySelected, onToggle, onOpen, onQr, onRenam
           </button>
         )}
         <button
-          title={isDir ? '删除文件夹' : '删除文件'}
+          title={isDir ? t('删除文件夹') : t('删除文件')}
           className="rounded-lg bg-bg/85 p-1.5 text-ink2 backdrop-blur transition hover:bg-danger-soft hover:text-danger"
           onClick={(e) => {
             e.stopPropagation()

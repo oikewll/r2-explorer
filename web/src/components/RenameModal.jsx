@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import Modal from './Modal'
 
 // 重命名：文件走 /api/move，文件夹走 /api/move-tree
 export default function RenameModal({ bucket, item, prefix, onClose, onDone }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const [name, setName] = useState(item.name)
   const [busy, setBusy] = useState(false)
@@ -14,7 +16,7 @@ export default function RenameModal({ bucket, item, prefix, onClose, onDone }) {
     const newName = name.trim()
     if (!newName || newName === item.name) return onClose()
     if (newName.includes('/')) {
-      setError('名称不能包含 /')
+      setError(t('名称不能包含 /'))
       return
     }
     setBusy(true)
@@ -31,7 +33,7 @@ export default function RenameModal({ bucket, item, prefix, onClose, onDone }) {
           body: JSON.stringify({ bucket, items: [{ from: item.path, to: prefix + newName }] }),
         })
       }
-      toast('已重命名')
+      toast(t('已重命名'))
       onDone()
     } catch (e) {
       if (e.message !== 'unauthorized') setError(e.message)
@@ -40,7 +42,7 @@ export default function RenameModal({ bucket, item, prefix, onClose, onDone }) {
   }
 
   return (
-    <Modal title={`重命名${item.isDir ? '文件夹' : '文件'}`} onClose={onClose} width="max-w-[400px]">
+    <Modal title={t('重命名') + (item.isDir ? t('文件夹') : t('文件'))} onClose={onClose} width="max-w-[400px]">
       <div className="px-5 py-5">
         <input
           className="input"
@@ -53,10 +55,10 @@ export default function RenameModal({ bucket, item, prefix, onClose, onDone }) {
         <div className="mt-2 min-h-[18px] text-[13px] text-danger">{error}</div>
         <div className="flex justify-end gap-2">
           <button className="btn-plain" onClick={onClose} disabled={busy}>
-            取消
+            {t('取消')}
           </button>
           <button className="btn-primary" onClick={submit} disabled={busy || !name.trim()}>
-            {busy ? '保存中…' : '保存'}
+            {busy ? t('保存中…') : t('保存')}
           </button>
         </div>
       </div>

@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
 import { UIcon } from './icons'
+import { t, useT } from '../lib/i18n'
 
 // 通用弹窗：桌面居中卡片，移动端底部弹出
 export default function Modal({ title, onClose, children, width = 'max-w-md', footer = null }) {
+  const t = useT()
   useEffect(() => {
     const fn = (e) => {
       if (e.key === 'Escape') onClose?.()
@@ -21,7 +23,7 @@ export default function Modal({ title, onClose, children, width = 'max-w-md', fo
       <div className={`modal-panel pop-in max-sm:rounded-b-none max-sm:rounded-t-2xl ${width}`}>
         <div className="modal-head">
           <div className="modal-title">{title}</div>
-          <button className="icon-btn -mr-1.5" onClick={onClose} title="关闭">
+          <button className="icon-btn -mr-1.5" onClick={onClose} title={t('关闭')}>
             <UIcon name="close" size={17} />
           </button>
         </div>

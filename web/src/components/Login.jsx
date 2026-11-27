@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
-import { FIcon } from './icons'
+import { useT } from '../lib/i18n'
+import Settings from './Settings'
+import { FIcon, UIcon } from './icons'
 import Footer from './Footer'
 
 export default function Login({ onOk }) {
+  const t = useT()
   const [pwd, setPwd] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const toast = useStore((s) => s.toast)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -32,21 +36,28 @@ export default function Login({ onOk }) {
           <FIcon type="bucket" size={56} />
         </div>
         <h1 className="mt-3 text-[20px] font-semibold">R2 Explorer</h1>
-        <p className="mb-6 mt-1 text-[13px] text-ink2">基于 Cloudflare R2 的轻量文件管理器</p>
+        <p className="mb-6 mt-1 text-[13px] text-ink2">{t('基于 Cloudflare R2 的轻量文件管理器')}</p>
         <input
           type="password"
           className="input text-center"
-          placeholder="登录密码"
+          placeholder={t('登录密码')}
           value={pwd}
           autoFocus
           onChange={(e) => setPwd(e.target.value)}
         />
         <div className="mt-2 min-h-[18px] text-[13px] text-danger">{err}</div>
         <button type="submit" className="btn-primary mt-1 w-full py-2.5" disabled={busy || !pwd}>
-          {busy ? '登录中…' : '登 录'}
+          {busy ? t('登录中…') : t('登 录')}
         </button>
       </form>
-      <Footer className="mt-8 pb-0" />
+      <div className="mt-4 flex justify-center">
+        <button className="btn-plain flex items-center gap-1.5" onClick={() => setSettingsOpen(true)}>
+          <UIcon name="gear" size={15} />
+          {t('设置')}
+        </button>
+      </div>
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      <Footer className="mt-4 pb-0" />
     </div>
   )
 }

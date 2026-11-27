@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fmtSize } from '../lib/format'
 import { readExif } from '../lib/exif'
+import { t, useT } from '../lib/i18n'
 import { UIcon } from './icons'
 import ImageEditor from './ImageEditor'
 
@@ -33,6 +34,7 @@ function TBtn({ icon, title, onClick, active }) {
 const Sep = () => <span className="mx-1 h-4 w-px shrink-0 bg-white/20" />
 
 export default function ImageViewer({ f, url, siblings = [], setPreview, onSaved, canEdit = false, autoEdit = false }) {
+  const t = useT()
   const boxRef = useRef(null)
   const imgRef = useRef(null)
   const gifRef = useRef(null)
@@ -345,14 +347,14 @@ export default function ImageViewer({ f, url, siblings = [], setPreview, onSaved
         <>
           <button
             className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white/80 backdrop-blur transition hover:bg-black/65 hover:text-white"
-            title="上一张（←）"
+            title={t('上一张（←）')}
             onClick={() => go(-1)}
           >
             <UIcon name="prev" size={17} />
           </button>
           <button
             className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white/80 backdrop-blur transition hover:bg-black/65 hover:text-white"
-            title="下一张（→）"
+            title={t('下一张（→）')}
             onClick={() => go(1)}
           >
             <UIcon name="next" size={17} />
@@ -363,18 +365,18 @@ export default function ImageViewer({ f, url, siblings = [], setPreview, onSaved
       {/* 信息面板 */}
       {infoOpen && (
         <div className="absolute bottom-16 left-3 z-10 w-56 rounded-xl bg-black/70 p-3.5 text-[12.5px] leading-relaxed text-white/90 shadow-xl backdrop-blur">
-          <div className="mb-1.5 text-[13px] font-semibold text-white">图片信息</div>
-          <Row k="尺寸" v={nat.w && nat.h ? `${nat.w} × ${nat.h}` : '…'} />
-          <Row k="格式" v={ext(f.name).toUpperCase()} />
-          <Row k="大小" v={fmtSize(f.size)} />
+          <div className="mb-1.5 text-[13px] font-semibold text-white">{t('图片信息')}</div>
+          <Row k={t('尺寸')} v={nat.w && nat.h ? `${nat.w} × ${nat.h}` : '…'} />
+          <Row k={t('格式')} v={ext(f.name).toUpperCase()} />
+          <Row k={t('大小')} v={fmtSize(f.size)} />
           {exif && (
             <>
-              {(exif.make || exif.model) && <Row k="相机" v={[exif.make, exif.model].filter(Boolean).join(' ')} />}
-              {(exif.dateTimeOriginal || exif.dateTime) && <Row k="拍摄时间" v={exif.dateTimeOriginal || exif.dateTime} />}
-              {exif.exposure && <Row k="快门" v={exif.exposure} />}
-              {exif.fnumber && <Row k="光圈" v={exif.fnumber} />}
-              {exif.iso && <Row k="感光度" v={exif.iso} />}
-              {exif.focal && <Row k="焦距" v={exif.focal} />}
+              {(exif.make || exif.model) && <Row k={t('相机')} v={[exif.make, exif.model].filter(Boolean).join(' ')} />}
+              {(exif.dateTimeOriginal || exif.dateTime) && <Row k={t('拍摄时间')} v={exif.dateTimeOriginal || exif.dateTime} />}
+              {exif.exposure && <Row k={t('快门')} v={exif.exposure} />}
+              {exif.fnumber && <Row k={t('光圈')} v={exif.fnumber} />}
+              {exif.iso && <Row k={t('感光度')} v={exif.iso} />}
+              {exif.focal && <Row k={t('焦距')} v={exif.focal} />}
             </>
           )}
         </div>
@@ -388,37 +390,37 @@ export default function ImageViewer({ f, url, siblings = [], setPreview, onSaved
               {idx + 1} / {siblings.length}
             </span>
           )}
-          <TBtn icon="zoomOut" title="缩小（-）" onClick={() => zoomCenter(0.8)} />
+          <TBtn icon="zoomOut" title={t('缩小（-）')} onClick={() => zoomCenter(0.8)} />
           <button
             className="w-12 text-center text-[12px] tabular-nums text-white/80 hover:text-white"
-            title="适应窗口（0）"
+            title={t('适应窗口（0）')}
             onClick={fit}
           >
             {pct}%
           </button>
-          <TBtn icon="zoomIn" title="放大（+）" onClick={() => zoomCenter(1.25)} />
+          <TBtn icon="zoomIn" title={t('放大（+）')} onClick={() => zoomCenter(1.25)} />
           <button
             className="shrink-0 rounded-full px-1.5 text-[11.5px] font-medium text-white/80 hover:text-white"
-            title="按原始尺寸显示（100%）"
+            title={t('按原始尺寸显示（100%）')}
             onClick={fit100}
           >
             1:1
           </button>
           <Sep />
-          <TBtn icon="rotateCcw" title="向左旋转" onClick={() => rotate(-90)} />
-          <TBtn icon="rotateCw" title="向右旋转" onClick={() => rotate(90)} />
-          <TBtn icon="flipH" title="水平翻转" active={flipH} onClick={() => setFlipH((v) => !v)} />
-          <TBtn icon="flipV" title="垂直翻转" active={flipV} onClick={() => setFlipV((v) => !v)} />
+          <TBtn icon="rotateCcw" title={t('向左旋转')} onClick={() => rotate(-90)} />
+          <TBtn icon="rotateCw" title={t('向右旋转')} onClick={() => rotate(90)} />
+          <TBtn icon="flipH" title={t('水平翻转')} active={flipH} onClick={() => setFlipH((v) => !v)} />
+          <TBtn icon="flipV" title={t('垂直翻转')} active={flipV} onClick={() => setFlipV((v) => !v)} />
           {isGif && (
             <>
               <Sep />
-              <TBtn icon={gifPaused ? 'play' : 'pause'} title={gifPaused ? '播放动图' : '暂停动图'} onClick={toggleGif} />
+              <TBtn icon={gifPaused ? 'play' : 'pause'} title={gifPaused ? t('播放动图') : t('暂停动图')} onClick={toggleGif} />
             </>
           )}
           <Sep />
-          <TBtn icon="info" title="图片信息（i）" active={infoOpen} onClick={() => setInfoOpen((v) => !v)} />
+          <TBtn icon="info" title={t('图片信息（i）')} active={infoOpen} onClick={() => setInfoOpen((v) => !v)} />
           {canEdit && (
-            <TBtn icon="edit" title="编辑图片（另存为新文件）" onClick={() => setEditing(true)} />
+            <TBtn icon="edit" title={t('编辑图片（另存为新文件）')} onClick={() => setEditing(true)} />
           )}
         </div>
       </div>

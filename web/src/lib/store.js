@@ -2,7 +2,25 @@ import { create } from 'zustand'
 
 let toastSeq = 0
 
+// 界面语言：优先用已保存的偏好，否则跟随浏览器语言，兜底简体中文
+function initialLang() {
+  try {
+    const saved = localStorage.getItem('r2x-lang')
+    if (saved) return saved
+    const n = (navigator.language || '').toLowerCase()
+    if (n.startsWith('zh-tw') || n.startsWith('zh-hk') || n.startsWith('zh-hant')) return 'zh-TW'
+    if (n.startsWith('en')) return 'en'
+    if (n.startsWith('ja')) return 'ja'
+    if (n.startsWith('ko')) return 'ko'
+  } catch {}
+  return 'zh-CN'
+}
+
 export const useStore = create((set) => ({
+  // 语言（i18n）
+  lang: initialLang(),
+  setLang: (v) => set({ lang: v }),
+
   // 登录态
   authed: false,
   setAuthed: (v) => set({ authed: v }),

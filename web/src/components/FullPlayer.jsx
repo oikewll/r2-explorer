@@ -13,10 +13,12 @@ import {
   fmtTimeSec,
 } from '../lib/player'
 import { fetchLrc, findLine } from '../lib/lrc'
+import { t, useT } from '../lib/i18n'
 import { UIcon } from './icons'
 import SeekBar from './SeekBar'
 
 export default function FullPlayer() {
+  const t = useT()
   const player = useStore((s) => s.player)
   const open = player.fullscreen
   const track = player.queue[player.index]
@@ -123,12 +125,12 @@ export default function FullPlayer() {
         <button
           className="flex h-10 w-10 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
           onClick={closeFullscreen}
-          title="收起"
+          title={t('收起')}
         >
           <UIcon name="collapse" size={20} />
         </button>
         <div className="min-w-0 flex-1 text-center">
-          <div className="text-[11px] font-medium uppercase tracking-widest text-white/40">正在播放</div>
+          <div className="text-[11px] font-medium uppercase tracking-widest text-white/40">{t('正在播放')}</div>
           <div className="truncate text-[12.5px] text-white/70">{track.bucket}</div>
         </div>
         <div className="h-10 w-10" />
@@ -166,7 +168,7 @@ export default function FullPlayer() {
                 }`}
                 onClick={() => setView('lyrics')}
               >
-                歌词
+                {t('歌词')}
               </button>
               <button
                 className={`rounded-full px-3.5 py-1 transition ${
@@ -174,7 +176,7 @@ export default function FullPlayer() {
                 }`}
                 onClick={() => setView('queue')}
               >
-                队列 {player.queue.length}
+                {t('队列 {n}', { n: player.queue.length })}
               </button>
             </div>
           </div>
@@ -209,28 +211,28 @@ export default function FullPlayer() {
           <button
             className="flex h-11 w-11 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
             onClick={() => setMode(nextMode.value)}
-            title={mode.title}
+            title={t(mode.title)}
           >
             <UIcon name={mode.icon} size={18} />
           </button>
           <button
             className="flex h-12 w-12 items-center justify-center rounded-full text-white transition hover:bg-white/10 active:scale-95"
             onClick={prev}
-            title="上一首"
+            title={t('上一首')}
           >
             <UIcon name="prev" size={22} />
           </button>
           <button
             className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-[#17181c] shadow-[0_8px_28px_rgba(255,255,255,.18)] transition hover:brightness-95 active:scale-95 max-sm:h-14 max-sm:w-14"
             onClick={togglePlay}
-            title={player.playing ? '暂停' : '播放'}
+            title={player.playing ? t('暂停') : t('播放')}
           >
             <UIcon name={player.playing ? 'pause' : 'play'} size={26} />
           </button>
           <button
             className="flex h-12 w-12 items-center justify-center rounded-full text-white transition hover:bg-white/10 active:scale-95"
             onClick={() => next(false)}
-            title="下一首"
+            title={t('下一首')}
           >
             <UIcon name="next" size={22} />
           </button>
@@ -239,7 +241,7 @@ export default function FullPlayer() {
               view === 'queue' ? 'text-white' : 'text-white/60 hover:text-white'
             }`}
             onClick={() => setView(view === 'queue' ? 'lyrics' : 'queue')}
-            title="播放队列"
+            title={t('播放队列')}
           >
             <UIcon name="queue" size={18} />
           </button>
@@ -251,10 +253,11 @@ export default function FullPlayer() {
 
 // ---------- 歌词面板 ----------
 function LyricsPanel({ lyrics, state, active, listRef, lineRefs, userScrollUntil, clickLine }) {
+  const t = useT()
   if (state === 'loading') {
     return (
       <div className="flex flex-1 items-center justify-center text-[13px] text-white/35">
-        <span className="animate-pulse">加载歌词…</span>
+        <span className="animate-pulse">{t('加载歌词…')}</span>
       </div>
     )
   }
@@ -262,8 +265,8 @@ function LyricsPanel({ lyrics, state, active, listRef, lineRefs, userScrollUntil
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
         <UIcon name="audio" size={28} className="text-white/15" />
-        <div className="text-[13px] text-white/35">未找到同名 .lrc 歌词</div>
-        <div className="text-[11.5px] text-white/25">把 foo.mp3 对应的 foo.lrc 上传到同目录即可</div>
+        <div className="text-[13px] text-white/35">{t('未找到同名 .lrc 歌词')}</div>
+        <div className="text-[11.5px] text-white/25">{t('把 foo.mp3 对应的 foo.lrc 上传到同目录即可')}</div>
       </div>
     )
   }
@@ -294,6 +297,7 @@ function LyricsPanel({ lyrics, state, active, listRef, lineRefs, userScrollUntil
 
 // ---------- 队列面板 ----------
 function QueueList({ listRef }) {
+  const t = useT()
   const player = useStore((s) => s.player)
   return (
     <div ref={listRef} className="lyrics-scroll min-h-0 flex-1 overflow-y-auto pb-2">
@@ -320,7 +324,7 @@ function QueueList({ listRef }) {
               </span>
               <span className="block truncate text-[11px] text-white/35">{t.bucket}</span>
             </span>
-            {cur && <span className="shrink-0 text-[11px] text-accent">播放中</span>}
+            {cur && <span className="shrink-0 text-[11px] text-accent">{t('播放中')}</span>}
           </button>
         )
       })}

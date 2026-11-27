@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { capabilities } from '../lib/video'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { stripArchiveExt } from '../lib/format'
 import Modal from './Modal'
 import { UIcon } from './icons'
@@ -12,6 +13,7 @@ import { UIcon } from './icons'
 const BATCH_SIZE = 10 // 每批条目数（服务端上限 12，留余量）
 
 export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const [mode, setMode] = useState(null) // 'job' | 'batch' | 'none'
   const [target, setTarget] = useState(prefix + stripArchiveExt(file.name) + '/')
@@ -45,7 +47,7 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
         if (['done', 'failed', 'cancelled'].includes(s.status)) {
           stopPolling()
           if (s.status === 'done' && !s.failed) {
-            toast(`解压完成，共 ${s.done} 个文件`)
+            toast(t('解压完成，共 {n} 个文件', { n: s.done }))
             onDone()
             onClose()
           }
@@ -58,7 +60,7 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
   }, [mode, job?.id, job?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // batch 模式：先列条目，再分批解压，全部由前端驱动（中途关页面就断）
-  const startBatch = async (t) => {
+  const startBatch = async (t2) => {
     setJob({ mode: 'batch', status: 'listing', total: 0, done: 0, failed: 0, errors: [] })
     let entries
     try {
@@ -71,7 +73,7 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
         method: e.method,
       }))
       if (!entries.length) {
-        setJob({ mode: 'batch', status: 'failed', error: '压缩包内没有可解压的文件' })
+        setJob({ mode: 'batch', status: 'failed', error: t('压缩包内没有可解压的文件') })
         return
       }
     } catch (e) {
@@ -92,7 +94,7 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
       try {
         r = await api('/api/extract-batch', {
           method: 'POST',
-          body: JSON.stringify({ bucket, key: file.path, target: t, entries: entries.slice(i, i + BATCH_SIZE) }),
+          body: JSON.stringify({ bucket, key: file.path, target: t2, entries: entries.slice(i, i + BATCH_SIZE) }),
         })
         netFails = 0
       } catch (e) {
@@ -102,7 +104,7 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
           setJob({
             mode: 'batch',
             status: 'failed',
-            error: `请求失败：${e.message}`,
+            error: t('请求失败：') + e.message,
             total: entries.length,
             done,
             failed,
@@ -124,21 +126,21 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
       done,
       failed,
       errors: errors.slice(0, 50),
-      message: failed ? `${failed} 个文件解压失败，其余已完成` : '',
+      message: failed ? t('{n} 个文件解压失败，其余已完成', { n: failed }) : '',
     })
   }
 
-  const startJob = async (t) => {
+  const startJob = async (t2) => {
     const r = await api('/api/extract', {
       method: 'POST',
-      body: JSON.stringify({ bucket, key: file.path, target: t }),
+      body: JSON.stringify({ bucket, key: file.path, target: t2 }),
     })
     setJob({ mode: 'job', id: r.id, status: 'running', total: 0, done: 0, failed: 0, errors: [] })
   }
 
   const finish = (j) => {
     if (j.status === 'done' && !j.failed) {
-      toast(`解压完成，共 ${j.done} 个文件`)
+      toast(t('解压完成，共 {n} 个文件', { n: j.done }))
       onDone()
       onClose()
       return
@@ -148,16 +150,16 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
 
   const start = async () => {
     cancelRef.current = false // 上次会话的取消标记不带入本次（放在入口，listing 阶段的取消才能生效）
-    const t = target.trim()
-    if (!t.endsWith('/') || t.startsWith('/') || t.slice(0, -1).split('/').some((p) => !p || p === '.' || p === '..')) {
-      setError('目标目录格式不正确')
+    const t2 = target.trim()
+    if (!t2.endsWith('/') || t2.startsWith('/') || t2.slice(0, -1).split('/').some((p) => !p || p === '.' || p === '..')) {
+      setError(t('目标目录格式不正确'))
       return
     }
     setBusy(true)
     setError('')
     try {
-      if (mode === 'batch') await startBatch(t)
-      else await startJob(t)
+      if (mode === 'batch') await startBatch(t2)
+      else await startJob(t2)
     } catch (e) {
       if (e.message !== 'unauthorized') setError(e.message)
     } finally {
@@ -183,37 +185,37 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
   const pct = job && job.total ? Math.round(((job.done + job.failed) / job.total) * 100) : 0
 
   return (
-    <Modal title="在线解压" onClose={running ? cancel : onClose} width="max-w-[480px]">
+    <Modal title={t('在线解压')} onClose={running ? cancel : onClose} width="max-w-[480px]">
       <div className="px-5 py-5">
         <div className="mb-1.5 text-[13px] text-ink2">
-          压缩包：<span className="truncate font-medium text-ink">{file.name}</span>
+          {t('压缩包：')}<span className="truncate font-medium text-ink">{file.name}</span>
         </div>
 
         {!job && (
           <>
-            <div className="mt-3 mb-1.5 text-[13px] font-medium">解压到</div>
+            <div className="mt-3 mb-1.5 text-[13px] font-medium">{t('解压到')}</div>
             <input
               className="input"
-              placeholder="目标目录，如 photos/backup/"
+              placeholder={t('目标目录，如 photos/backup/')}
               value={target}
               autoFocus
               onChange={(e) => setTarget(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && mode !== 'none' && start()}
             />
             <div className="mt-1.5 text-[12px] text-ink2/70">
-              文件将写入「{target || '目标目录'}」下，同名文件会被覆盖
-              {mode === 'batch' && '；解压期间请保持页面打开'}
+              {t('文件将写入「{t}」下，同名文件会被覆盖', { t: target || t('目标目录') })}
+              {mode === 'batch' && t('；解压期间请保持页面打开')}
             </div>
           </>
         )}
 
         {job && (
           <div className="mt-3">
-            {job.status === 'listing' && <div className="text-[13px] text-ink2">正在读取压缩包目录…</div>}
+            {job.status === 'listing' && <div className="text-[13px] text-ink2">{t('正在读取压缩包目录…')}</div>}
             {job.status === 'running' && (
               <>
                 <div className="mb-2 flex items-center justify-between text-[13px]">
-                  <span className="text-ink2">正在解压…</span>
+                  <span className="text-ink2">{t('正在解压…')}</span>
                   <span className="tabular-nums text-ink2">
                     {job.done + job.failed}/{job.total || '?'}
                   </span>
@@ -222,22 +224,22 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
                   <div className="h-full rounded-full bg-accent transition-all" style={{ width: pct + '%' }} />
                 </div>
                 {mode === 'batch' && job.total > 0 && (
-                  <div className="mt-1.5 text-[12px] text-ink2/70">解压进行中，请勿关闭页面</div>
+                  <div className="mt-1.5 text-[12px] text-ink2/70">{t('解压进行中，请勿关闭页面')}</div>
                 )}
               </>
             )}
             {job.status === 'done' && job.failed > 0 && (
               <div className="flex items-center gap-1.5 text-[13px] text-ink2">
                 <UIcon name="check" size={15} className="text-accent" />
-                解压完成，{job.done} 个成功，{job.failed} 个失败
+                {t('解压完成，{n} 个成功，{m} 个失败', { n: job.done, m: job.failed })}
               </div>
             )}
             {job.status === 'failed' && (
-              <div className="text-[13px] text-danger">解压失败：{job.error || job.message || '未知错误'}</div>
+              <div className="text-[13px] text-danger">{t('解压失败：') + (job.error || job.message || t('未知错误'))}</div>
             )}
             {job.status === 'cancelled' && (
               <div className="text-[13px] text-ink2">
-                任务已取消{job.done > 0 && `，已解压的 ${job.done} 个文件保留`}
+                {t('任务已取消')}{job.done > 0 && t('，已解压的 {n} 个文件保留', { n: job.done })}
               </div>
             )}
             {job.failed > 0 && job.errors.length > 0 && (
@@ -247,7 +249,7 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
                     {e}
                   </div>
                 ))}
-                {job.failed > job.errors.length && <div>… 还有 {job.failed - job.errors.length} 个失败未展示</div>}
+                {job.failed > job.errors.length && <div>{t('… 还有 {n} 个失败未展示', { n: job.failed - job.errors.length })}</div>}
               </div>
             )}
           </div>
@@ -258,10 +260,10 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
           {running ? (
             <>
               <button className="btn-plain" onClick={cancel}>
-                取消任务
+                {t('取消任务')}
               </button>
               <button className="btn-plain" disabled>
-                {mode === 'job' ? '后台进行中' : '解压进行中'}
+                {mode === 'job' ? t('后台进行中') : t('解压进行中')}
               </button>
             </>
           ) : ended ? (
@@ -272,15 +274,15 @@ export default function ExtractModal({ bucket, file, prefix, onClose, onDone }) 
                 onClose()
               }}
             >
-              关闭
+              {t('关闭')}
             </button>
           ) : (
             <>
               <button className="btn-plain" onClick={onClose} disabled={busy}>
-                取消
+                {t('取消')}
               </button>
               <button className="btn-primary" onClick={start} disabled={busy || !target.trim() || mode === 'none'}>
-                {busy ? '启动中…' : '开始解压'}
+                {busy ? t('启动中…') : t('开始解压')}
               </button>
             </>
           )}

@@ -1,5 +1,6 @@
 import { api } from './api'
 import { useStore } from './store'
+import { t as tr } from './i18n'
 
 // 服务端离线下载任务轮询：Workers KV list() 有每日配额（免费版仅 1000 次/天），
 // 有活跃任务且页面可见 1.2s；活跃但页面在后台 10s；空闲 30s；
@@ -22,7 +23,7 @@ async function fetchOnce() {
     const before = prevStatus.get(t.id)
     if (!before || before === t.status) continue
     if (t.status === 'completed') {
-      store.toast(`下载完成：${t.name}`)
+      store.toast(tr('下载完成：{name}', { name: t.name }))
       store.bumpDownloadsVersion()
     } else if (t.status === 'failed') {
       store.bumpDownloadsVersion()

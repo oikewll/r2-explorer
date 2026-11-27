@@ -1,5 +1,6 @@
 import { api } from './api'
 import { useStore } from './store'
+import { t as tr } from './i18n'
 
 const SAVE_KEY = 'r2x_player_v1'
 const SAVE_INTERVAL_MS = 5000
@@ -60,7 +61,7 @@ function ensureAudio() {
     const track = currentTrack()
     if (!track || !audio.src) return
     if (failStreak >= 2) {
-      useStore.getState().toast('播放失败：' + track.name, 'error')
+      useStore.getState().toast(tr('播放失败：') + track.name, 'error')
       failStreak = 0
       return
     }

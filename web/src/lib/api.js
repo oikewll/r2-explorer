@@ -1,5 +1,7 @@
 let onUnauthorized = () => {}
 
+import { t } from './i18n'
+
 export function setUnauthorizedHandler(fn) {
   onUnauthorized = fn
 }
@@ -17,7 +19,7 @@ export async function api(path, opts = {}) {
     data = await res.json()
   } catch {}
   if (!res.ok) {
-    throw new Error((data && data.error) || `请求失败 (${res.status})`)
+    throw new Error((data && data.error) || t('请求失败 ({n})', { n: res.status }))
   }
   return data
 }

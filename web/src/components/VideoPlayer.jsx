@@ -14,12 +14,14 @@ import {
   nextVideoOf,
 } from '../lib/video'
 import { fmtTimeSec } from '../lib/player'
+import { t, useT } from '../lib/i18n'
 import { UIcon } from './icons'
 
 // ArtPlayer 播放器封装：
 // - 浏览器可直放的格式直接播；mkv/avi 等走服务端 ffmpeg HLS 转码（仅 Node/Docker 版）
 // - 同名 .srt/.vtt 字幕、播放位置记忆、播完自动下一集
 export default function VideoPlayer({ f, siblings, setPreview }) {
+  const t = useT()
   const boxRef = useRef(null)
   const artRef = useRef(null)
   const transIdRef = useRef('')
@@ -38,7 +40,7 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
     const playNext = () => {
       const next = nextVideoOf(siblings, f)
       if (next) {
-        toast('即将播放下一集：' + next.name)
+        toast(t('即将播放下一集：') + next.name)
         setPreview({ mode: 'file', f: next, siblings })
       }
     }
@@ -55,7 +57,7 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
         if (!cap.transcode) {
           if (alive) {
             setStatus('failed')
-            setFailMsg('服务器未开启转码（需 Docker 自托管版并安装 ffmpeg），该格式无法在线播放')
+            setFailMsg(t('服务器未开启转码（需 Docker 自托管版并安装 ffmpeg），该格式无法在线播放'))
           }
           return
         }
@@ -150,7 +152,7 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
       art.on('video:error', () => {
         if (alive) {
           setStatus('failed')
-          setFailMsg('视频加载失败：文件可能不支持浏览器播放或直链已过期，请重试')
+          setFailMsg(t('视频加载失败：文件可能不支持浏览器播放或直链已过期，请重试'))
         }
       })
 
@@ -159,7 +161,7 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
         art.on('ready', () => {
           if (saved > 15 && !art.playing) {
             art.currentTime = saved
-            toast(`已从 ${fmtTimeSec(saved)} 继续播放`)
+            toast(t('已从 {t} 继续播放', { t: fmtTimeSec(saved) }))
           }
         })
       }
@@ -188,7 +190,7 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
         console.error('[VideoPlayer] init failed:', e)
         if (alive) {
           setStatus('failed')
-          setFailMsg('播放器初始化失败：' + (e?.message || e))
+          setFailMsg(t('播放器初始化失败：') + (e?.message || e))
         }
       }
     })()
@@ -216,7 +218,7 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
           <div className="mt-1 px-2 text-[13px] leading-relaxed text-ink2">{failMsg}</div>
           <a className="btn-primary mt-5" href={f.url} target="_blank" rel="noreferrer">
             <UIcon name="download" size={15} />
-            下载文件
+            {t('下载文件')}
           </a>
         </div>
       </div>
@@ -230,9 +232,9 @@ export default function VideoPlayer({ f, siblings, setPreview }) {
         {status !== 'ready' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-white/70">
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white/80" />
-            <span className="text-[13px]">{status === 'transcoding' ? '服务端转码中，马上就能播…' : '加载中…'}</span>
+            <span className="text-[13px]">{status === 'transcoding' ? t('服务端转码中，马上就能播…') : t('加载中…')}</span>
             {status === 'transcoding' && (
-              <span className="text-[11.5px] text-white/40">大文件首次转码需要一点时间，边转边播</span>
+              <span className="text-[11.5px] text-white/40">{t('大文件首次转码需要一点时间，边转边播')}</span>
             )}
           </div>
         )}

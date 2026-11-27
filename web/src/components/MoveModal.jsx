@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { FIcon, UIcon } from './icons'
 import Modal from './Modal'
 
 // 移动/重命名弹窗：浏览目标目录后移动。items: [{ path, name, isDir }]
 export default function MoveModal({ bucket, items, currentPrefix, onClose, onDone }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const [prefix, setPrefix] = useState('')
   const [dirs, setDirs] = useState([])
@@ -76,13 +78,13 @@ export default function MoveModal({ bucket, items, currentPrefix, onClose, onDon
         failed.push(...(res.failed || []))
       }
       if (failed.length) {
-        toast(`移动完成，${failed.length} 项失败：${failed[0].reason || ''}`, 'error')
+        toast(t('移动完成，{n} 项失败：', { n: failed.length }) + (failed[0].reason || ''), 'error')
       } else {
-        toast(`已移动 ${moved} 项到 /${prefix || ''}`)
+        toast(t('已移动 {n} 项到 /{p}', { n: moved, p: prefix || '' }))
       }
       onDone()
     } catch (e) {
-      if (e.message !== 'unauthorized') toast('移动失败：' + e.message, 'error')
+      if (e.message !== 'unauthorized') toast(t('移动失败：') + e.message, 'error')
       setBusy(false)
     }
   }
@@ -92,7 +94,7 @@ export default function MoveModal({ bucket, items, currentPrefix, onClose, onDon
     !items.some((it) => prefix + it.name === it.path)
 
   return (
-    <Modal title={`移动 ${items.length} 项`} onClose={onClose} width="max-w-[520px]">
+    <Modal title={t('移动 {n} 项', { n: items.length })} onClose={onClose} width="max-w-[520px]">
       <div className="px-5 py-4">
         {/* 面包屑 */}
         <div className="mb-3 flex flex-wrap items-center gap-1 text-[13.5px]">
@@ -115,11 +117,11 @@ export default function MoveModal({ bucket, items, currentPrefix, onClose, onDon
 
         <div className="thin-scroll max-h-[280px] min-h-[120px] overflow-y-auto rounded-xl border border-line">
           {loading ? (
-            <div className="p-8 text-center text-[13px] text-ink2">加载中…</div>
+            <div className="p-8 text-center text-[13px] text-ink2">{t('加载中…')}</div>
           ) : error ? (
             <div className="p-8 text-center text-[13px] text-danger">{error}</div>
           ) : dirs.length === 0 ? (
-            <div className="p-8 text-center text-[13px] text-ink2/70">这里没有子文件夹，可以直接移动到当前位置</div>
+            <div className="p-8 text-center text-[13px] text-ink2/70">{t('这里没有子文件夹，可以直接移动到当前位置')}</div>
           ) : (
             <div className="divide-y divide-line/60">
               {dirs.map((d) => (
@@ -138,13 +140,13 @@ export default function MoveModal({ bucket, items, currentPrefix, onClose, onDon
         </div>
 
         <div className="mt-4 flex items-center justify-between">
-          <div className="text-[12px] text-ink2">{canDropHere ? '' : '不能移动到自身或其子目录'}</div>
+          <div className="text-[12px] text-ink2">{canDropHere ? '' : t('不能移动到自身或其子目录')}</div>
           <div className="flex gap-2">
             <button className="btn-plain" onClick={onClose} disabled={busy}>
-              取消
+              {t('取消')}
             </button>
             <button className="btn-primary" onClick={doMove} disabled={busy || !canDropHere}>
-              {busy ? '移动中…' : '移动到这里'}
+              {busy ? t('移动中…') : t('移动到这里')}
             </button>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { fmtSize, fmtTime, categoryOf, iconType } from '../lib/format'
 import { navigate } from '../lib/hash'
 import { playFromList } from '../lib/player'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import Modal from './Modal'
 import { FIcon, UIcon } from './icons'
 
@@ -46,6 +47,7 @@ function ResultRow({ f, onPick }) {
 }
 
 export default function SearchModal({ bucket, onClose }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const [q, setQ] = useState('')
   const [scopeDir, setScopeDir] = useState(false)
@@ -76,7 +78,7 @@ export default function SearchModal({ bucket, onClose }) {
         .catch((e) => {
           if (seq.current !== id || e.message === 'unauthorized') return
           setState({ loading: false, files: [], more: false, done: true, error: e.message })
-          toast('搜索失败：' + e.message, 'error')
+          toast(t('搜索失败：') + e.message, 'error')
         })
     }, 300)
     return () => clearTimeout(timer)
@@ -85,28 +87,28 @@ export default function SearchModal({ bucket, onClose }) {
 
   const { loading, files, more, done, error } = state
   return (
-    <Modal title="全局搜索" onClose={onClose} width="max-w-xl">
+    <Modal title={t('全局搜索')} onClose={onClose} width="max-w-xl">
       <div className="px-4 pb-2">
         <div className="relative">
           <UIcon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink2" />
           <input
             ref={inputRef}
             className="input h-10 pl-9!"
-            placeholder={`在「${bucket}」中搜索文件名（至少 2 个字符）…`}
+            placeholder={t('在「{b}」中搜索文件名（至少 2 个字符）…', { b: bucket })}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
         <label className="mt-2 flex cursor-pointer items-center gap-1.5 text-[12.5px] text-ink2">
           <input type="checkbox" className="row-chk" checked={scopeDir} onChange={(e) => setScopeDir(e.target.checked)} />
-          仅在当前目录范围内搜索
+          {t('仅在当前目录范围内搜索')}
         </label>
       </div>
       <div className="thin-scroll max-h-[52vh] min-h-[160px] overflow-y-auto border-t border-line">
-        {loading && <div className="py-10 text-center text-[13px] text-ink2">搜索中…</div>}
-        {!loading && done && error && <div className="py-10 text-center text-[13px] text-danger">搜索失败：{error}</div>}
+        {loading && <div className="py-10 text-center text-[13px] text-ink2">{t('搜索中…')}</div>}
+        {!loading && done && error && <div className="py-10 text-center text-[13px] text-danger">{t('搜索失败：') + error}</div>}
         {!loading && done && !error && files.length === 0 && (
-          <div className="py-10 text-center text-[13px] text-ink2">没有匹配的文件</div>
+          <div className="py-10 text-center text-[13px] text-ink2">{t('没有匹配的文件')}</div>
         )}
         {files.length > 0 && (
           <>
@@ -117,7 +119,7 @@ export default function SearchModal({ bucket, onClose }) {
             </div>
             {more && (
               <div className="border-t border-line/60 px-4 py-2.5 text-center text-[12px] text-ink2">
-                匹配结果较多，仅显示前 {files.length} 条——试试更具体的关键字
+                {t('匹配结果较多，仅显示前 {n} 条——试试更具体的关键字', { n: files.length })}
               </div>
             )}
           </>

@@ -1,9 +1,11 @@
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { cancelUpload, retryUpload, clearFinishedUploads } from '../lib/uploader'
 import { fmtSize } from '../lib/format'
 import { UIcon } from './icons'
 
 function TaskRow({ task }) {
+  const t = useT()
   const uploading = task.status === 'uploading'
   const failed = task.status === 'fail'
   const done = task.status === 'done'
@@ -20,17 +22,17 @@ function TaskRow({ task }) {
             className="shrink-0 text-[12px] text-ink2 hover:text-danger"
             onClick={() => cancelUpload(task)}
           >
-            取消
+            {t('取消')}
           </button>
         ) : failed ? (
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-[12px] text-danger" title={task.error || ''}>失败</span>
+            <span className="text-[12px] text-danger" title={task.error || ''}>{t('失败')}</span>
             <button
               className="text-[12px] font-medium text-accent hover:underline"
-              title={task.uploadId ? '从已上传的分片继续' : '重新上传'}
+              title={task.uploadId ? t('从已上传的分片继续') : t('重新上传')}
               onClick={() => retryUpload(task)}
             >
-              重试
+              {t('重试')}
             </button>
           </div>
         ) : (
@@ -40,7 +42,7 @@ function TaskRow({ task }) {
             }`}
             title={task.error || ''}
           >
-            {done ? '完成' : cancelled ? '已取消' : '等待中'}
+            {done ? t('完成') : cancelled ? t('已取消') : t('等待中')}
           </span>
         )}
       </div>
@@ -68,6 +70,7 @@ function TaskRow({ task }) {
 }
 
 export default function UploadPanel() {
+  const t = useT()
   const uploads = useStore((s) => s.uploads)
   const open = useStore((s) => s.uploadPanelOpen)
   const setOpen = useStore((s) => s.setUploadPanelOpen)
@@ -85,15 +88,17 @@ export default function UploadPanel() {
     >
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
         <div className="text-[13px] font-semibold">
-          {allDone ? `上传完成：${done} 成功${fail ? `，${fail} 失败` : ''}` : `上传中… ${done + fail}/${uploads.length}`}
+          {allDone
+            ? t('上传完成：{n} 成功', { n: done }) + (fail ? t('，{n} 失败', { n: fail }) : '')
+            : t('上传中… {n}/{m}', { n: done + fail, m: uploads.length })}
         </div>
         <div className="flex items-center gap-1">
           {allDone && (
             <button className="text-[12px] text-ink2 hover:text-ink" onClick={clearFinishedUploads}>
-              清空
+              {t('清空')}
             </button>
           )}
-          <button className="icon-btn h-7 w-7" onClick={() => setOpen(false)} title="收起">
+          <button className="icon-btn h-7 w-7" onClick={() => setOpen(false)} title={t('收起')}>
             <UIcon name="close" size={14} />
           </button>
         </div>

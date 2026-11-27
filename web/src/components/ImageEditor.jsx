@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { UIcon } from './icons'
 
 // 图片编辑器（另存制，不覆盖原图）：
@@ -55,6 +56,7 @@ const RATIOS = [
 ]
 
 export default function ImageEditor({ f, url, onClose, onSaved }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const imgRef = useRef(null)
   const viewRef = useRef(null)
@@ -252,11 +254,11 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
       const out = exportCanvas()
       const type = outExt === 'jpg' ? 'image/jpeg' : 'image/png'
       const blob = await new Promise((resolve, reject) =>
-        out.toBlob((b) => (b ? resolve(b) : reject(new Error('导出失败'))), type, 0.92)
+        out.toBlob((b) => (b ? resolve(b) : reject(new Error(t('导出失败')))), type, 0.92)
       )
       await fn(blob)
     } catch (e) {
-      toast(e?.message === 'unauthorized' ? '登录已过期' : '导出失败：图片源不允许跨域读取，请下载原图后处理', 'error')
+      toast(e?.message === 'unauthorized' ? t('登录已过期') : t('导出失败：图片源不允许跨域读取，请下载原图后处理'), 'error')
     }
   }
 
@@ -280,7 +282,7 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
         `/api/upload?bucket=${encodeURIComponent(f.bucket)}&key=${encodeURIComponent(key)}`,
         { method: 'POST', body: blob, headers: { 'Content-Type': blob.type } }
       )
-      toast(`已另存为 ${name}`)
+      toast(t('已另存为 {name}', { name }))
       onSaved && onSaved({ bucket: f.bucket, path: key, name })
       setSaveOpen(false)
       onClose()
@@ -298,24 +300,24 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium" title={f.name}>
-            编辑图片 · {f.name}
+            {t('编辑图片 · {name}', { name: f.name })}
           </div>
           {editDims && (
             <div className="text-[11.5px] text-white/45">
-              画布 {editDims.cw} × {editDims.ch}
-              {nat.w && nat.w * nat.h > MAX_DIM * 0.98 && '（原图较大已缩入画布）'}
+              {t('画布 {w} × {h}', { w: editDims.cw, h: editDims.ch })}
+              {nat.w && nat.w * nat.h > MAX_DIM * 0.98 && t('（原图较大已缩入画布）')}
             </div>
           )}
         </div>
         {!corsOk && status === 'ready' && (
           <span className="hidden rounded-md bg-danger-soft px-2 py-1 text-[11.5px] text-danger sm:block">
-            图源跨域受限，无法导出
+            {t('图源跨域受限，无法导出')}
           </span>
         )}
         <button
           className="flex h-9 w-9 items-center justify-center rounded-[10px] text-white/70 hover:bg-white/10 hover:text-white"
           onClick={onClose}
-          title="关闭编辑器"
+          title={t('关闭编辑器')}
         >
           <UIcon name="close" size={17} />
         </button>
@@ -326,13 +328,13 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
         {status === 'loading' && (
           <div className="flex flex-col items-center gap-3 text-white/60">
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white/80" />
-            <span className="text-[13px]">正在加载原图…</span>
+            <span className="text-[13px]">{t('正在加载原图…')}</span>
           </div>
         )}
         {status === 'error' && (
           <div className="flex flex-col items-center gap-3 px-8 text-center text-white/60">
             <UIcon name="alert" size={36} />
-            <span className="text-[13.5px]">图片加载失败，无法编辑</span>
+            <span className="text-[13.5px]">{t('图片加载失败，无法编辑')}</span>
           </div>
         )}
         {status === 'ready' && editDims && disp && (
@@ -389,14 +391,14 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
 
       {/* 工具栏 */}
       <div className="flex shrink-0 flex-wrap items-center justify-center gap-1 border-t border-white/10 px-3 py-2">
-        <TBtn icon="crop" title="裁剪" active={tool === 'crop'} onClick={() => setTool(tool === 'crop' ? null : 'crop')} />
-        <TBtn icon="rotateCcw" title="向左旋转" onClick={() => setRot((r) => (r + 270) % 360)} />
-        <TBtn icon="rotateCw" title="向右旋转" onClick={() => setRot((r) => (r + 90) % 360)} />
-        <TBtn icon="flipH" title="水平翻转" active={flipH} onClick={() => setFlipH((v) => !v)} />
-        <TBtn icon="flipV" title="垂直翻转" active={flipV} onClick={() => setFlipV((v) => !v)} />
+        <TBtn icon="crop" title={t('裁剪')} active={tool === 'crop'} onClick={() => setTool(tool === 'crop' ? null : 'crop')} />
+        <TBtn icon="rotateCcw" title={t('向左旋转')} onClick={() => setRot((r) => (r + 270) % 360)} />
+        <TBtn icon="rotateCw" title={t('向右旋转')} onClick={() => setRot((r) => (r + 90) % 360)} />
+        <TBtn icon="flipH" title={t('水平翻转')} active={flipH} onClick={() => setFlipH((v) => !v)} />
+        <TBtn icon="flipV" title={t('垂直翻转')} active={flipV} onClick={() => setFlipV((v) => !v)} />
         <TBtn
           icon="sliders"
-          title="调整（亮度/对比度/饱和度）"
+          title={t('调整（亮度/对比度/饱和度）')}
           active={tool === 'adjust'}
           onClick={() => setTool(tool === 'adjust' ? null : 'adjust')}
         />
@@ -404,22 +406,22 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
         {tool === 'adjust' && (
           <TBtn
             icon="undo"
-            title="重置调整"
+            title={t('重置调整')}
             onClick={() => setAdj({ b: 0, c: 0, s: 0 })}
           />
         )}
         {tool === 'crop' && ratio > 0 && (
-          <TBtn icon="undo" title="重置裁剪框为全图" onClick={() => setCrop(null)} />
+          <TBtn icon="undo" title={t('重置裁剪框为全图')} onClick={() => setCrop(null)} />
         )}
         <span className="flex-1" />
         <button
           className="flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[13.5px] text-white/80 hover:bg-white/10 hover:text-white disabled:opacity-40"
           disabled={status !== 'ready'}
           onClick={download}
-          title="把当前编辑结果下载到本地"
+          title={t('把当前编辑结果下载到本地')}
         >
           <UIcon name="download" size={15} />
-          下载
+          {t('下载')}
         </button>
         <button
           className="flex items-center gap-1.5 rounded-[10px] bg-accent px-3.5 py-2 text-[13.5px] font-medium text-white shadow hover:brightness-110 disabled:opacity-40"
@@ -427,7 +429,7 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
           onClick={() => setSaveOpen(true)}
         >
           <UIcon name="save" size={15} />
-          另存为
+          {t('另存为')}
         </button>
       </div>
 
@@ -442,7 +444,7 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
               }`}
               onClick={() => applyRatioPreset(r.v)}
             >
-              {r.label}
+              {t(r.label)}
             </button>
           ))}
         </div>
@@ -451,9 +453,9 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
       {/* 调整面板 */}
       {tool === 'adjust' && (
         <div className="flex shrink-0 flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-white/10 px-4 py-3">
-          <Slider label="亮度" value={adj.b} onChange={(b) => setAdj((a) => ({ ...a, b }))} />
-          <Slider label="对比度" value={adj.c} onChange={(c) => setAdj((a) => ({ ...a, c }))} />
-          <Slider label="饱和度" value={adj.s} onChange={(s) => setAdj((a) => ({ ...a, s }))} />
+          <Slider label={t('亮度')} value={adj.b} onChange={(b) => setAdj((a) => ({ ...a, b }))} />
+          <Slider label={t('对比度')} value={adj.c} onChange={(c) => setAdj((a) => ({ ...a, c }))} />
+          <Slider label={t('饱和度')} value={adj.s} onChange={(s) => setAdj((a) => ({ ...a, s }))} />
         </div>
       )}
 
@@ -464,12 +466,12 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
           onMouseDown={(e) => e.target === e.currentTarget && setSaveOpen(false)}
         >
           <div className="modal-panel pop-in w-full max-w-[440px] !bg-card p-5 text-ink">
-            <div className="text-[15px] font-semibold">另存为新文件</div>
+            <div className="text-[15px] font-semibold">{t('另存为新文件')}</div>
             <div className="mt-1 text-[12.5px] text-ink2">
-              输出 {outW} × {outH} · {outExt.toUpperCase()}
-              {(adj.b || adj.c || adj.s || crop || rot || flipH || flipV) ? ' · 包含当前编辑' : ''}
+              {t('输出 {w} × {h}', { w: outW, h: outH })} · {outExt.toUpperCase()}
+              {(adj.b || adj.c || adj.s || crop || rot || flipH || flipV) ? t(' · 包含当前编辑') : ''}
             </div>
-            <label className="mt-4 block text-[13px] font-medium">文件名</label>
+            <label className="mt-4 block text-[13px] font-medium">{t('文件名')}</label>
             <input
               className="input mt-1.5"
               value={saveName}
@@ -478,21 +480,21 @@ export default function ImageEditor({ f, url, onClose, onSaved }) {
               onKeyDown={(e) => e.key === 'Enter' && doSave()}
             />
             <div className="mt-1.5 text-[12px] text-ink2/85">
-              保存到当前目录。同名文件会被直接覆盖，请注意文件名。
+              {t('保存到当前目录。同名文件会被直接覆盖，请注意文件名。')}
             </div>
             {!corsOk && (
               <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] leading-relaxed text-danger">
-                图片源不允许跨域读取，编辑结果无法导出保存。可先下载原图，编辑后重新上传。
+                {t('图片源不允许跨域读取，编辑结果无法导出保存。可先下载原图，编辑后重新上传。')}
               </div>
             )}
             <div className="mt-4 flex justify-end gap-2">
               <button className="btn-plain" onClick={download}>
                 <UIcon name="download" size={14} />
-                下载到本地
+                {t('下载到本地')}
               </button>
               <button className="btn-primary" disabled={saving || !saveName.trim() || !corsOk} onClick={doSave}>
                 <UIcon name="save" size={14} />
-                {saving ? '保存中…' : '保存到当前目录'}
+                {saving ? t('保存中…') : t('保存到当前目录')}
               </button>
             </div>
           </div>

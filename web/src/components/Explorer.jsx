@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { fmtSize, fmtTime, iconType, categoryOf, copyText, isExtractable } from '../lib/format'
 import { navigate, buildHash } from '../lib/hash'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { startUpload } from '../lib/uploader'
 import { playFromList } from '../lib/player'
 import { capabilities } from '../lib/video'
@@ -65,8 +66,10 @@ const SORTS = [
   { value: 'size', label: '按大小' },
   { value: 'time', label: '按时间' },
 ]
+const SORT_LABELS = Object.fromEntries(SORTS.map((s) => [s.value, s.label]))
 
 export default function Explorer({ route }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const playerVisible = useStore((s) => s.player.visible)
   const setDownloadModalOpen = useStore((s) => s.setDownloadModalOpen)
@@ -222,15 +225,15 @@ export default function Explorer({ route }) {
     const dirs = items.filter((i) => i.isDir)
     const files = items.filter((i) => !i.isDir)
     const label = [
-      files.length ? `${files.length} 个文件` : '',
-      dirs.length ? `${dirs.length} 个文件夹（含全部内容）` : '',
+      files.length ? t('{n} 个文件', { n: files.length }) : '',
+      dirs.length ? t('{n} 个文件夹（含全部内容）', { n: dirs.length }) : '',
     ]
       .filter(Boolean)
       .join(' + ')
     setConfirm({
-      title: '确认删除',
-      message: `确定要删除 ${label} 吗？\n此操作不可恢复。`,
-      okText: '删除',
+      title: t('确认删除'),
+      message: t('确定要删除 {label} 吗？\n此操作不可恢复。', { label }),
+      okText: t('删除'),
       onOk: async () => {
         try {
           let failCount = 0
@@ -257,12 +260,12 @@ export default function Explorer({ route }) {
               if (r && r.errors && r.errors.length) failCount += r.errors.length
             }
           }
-          if (failCount) toast(`删除完成，${failCount} 项失败`, 'error')
-          else toast('删除完成')
+          if (failCount) toast(t('删除完成，{n} 项失败', { n: failCount }), 'error')
+          else toast(t('删除完成'))
           setSelected(new Set())
           refresh()
         } catch (e) {
-          if (e.message !== 'unauthorized') toast('删除失败：' + e.message, 'error')
+          if (e.message !== 'unauthorized') toast(t('删除失败：') + e.message, 'error')
         }
       },
     })
@@ -275,7 +278,7 @@ export default function Explorer({ route }) {
 
   const copyLink = async (f) => {
     const ok = await copyText(f.url)
-    toast(ok ? '直链已复制' : '复制失败', ok ? 'info' : 'error')
+    toast(ok ? t('直链已复制') : t('复制失败'), ok ? 'info' : 'error')
   }
 
   // 生成二维码：内容就是文件直链（CDN 直链或 7 天预签名直链），手机扫码即可打开 / 下载
@@ -302,22 +305,22 @@ export default function Explorer({ route }) {
   const buildItemMenu = (item) => {
     if (selected.has(item.path) && selected.size > 1) {
       return [
-        { icon: 'folderMove', label: `移动 ${selected.size} 项…`, onClick: () => setMoveItems(selectedItems) },
-        { icon: 'check', label: allSelected ? '取消全选' : '全选', onClick: toggleAll },
+        { icon: 'folderMove', label: t('移动 {n} 项…', { n: selected.size }), onClick: () => setMoveItems(selectedItems) },
+        { icon: 'check', label: allSelected ? t('取消全选') : t('全选'), onClick: toggleAll },
         { sep: true },
-        { icon: 'trash', label: `删除 ${selected.size} 项`, danger: true, onClick: () => askDelete(selectedItems) },
+        { icon: 'trash', label: t('删除 {n} 项', { n: selected.size }), danger: true, onClick: () => askDelete(selectedItems) },
       ]
     }
     const cat = item.isDir ? null : categoryOf(item.name)
     const menu = []
     if (item.isDir) {
-      menu.push({ icon: 'open', label: '打开', onClick: () => navigate(bucket, item.path) })
+      menu.push({ icon: 'open', label: t('打开'), onClick: () => navigate(bucket, item.path) })
     } else {
-      menu.push({ icon: 'open', label: '打开 / 预览', onClick: () => openFile(item) })
+      menu.push({ icon: 'open', label: t('打开 / 预览'), onClick: () => openFile(item) })
       if (cat === 'image') {
         menu.push({
           icon: 'edit',
-          label: '编辑图片',
+          label: t('编辑图片'),
           onClick: () =>
             setPreview({
               mode: 'file',
@@ -327,19 +330,19 @@ export default function Explorer({ route }) {
             }),
         })
       }
-      menu.push({ icon: 'copy', label: '复制直链', onClick: () => copyLink(item) })
-      menu.push({ icon: 'qr', label: '二维码 / 扫码打开', onClick: () => openQr(item) })
+      menu.push({ icon: 'copy', label: t('复制直链'), onClick: () => copyLink(item) })
+      menu.push({ icon: 'qr', label: t('二维码 / 扫码打开'), onClick: () => openQr(item) })
       // 在线解压：Node 版走后台任务（caps.extract）；Workers 版走前端驱动分批、zip 专用（caps.extractBatch）
       if ((caps?.extract || caps?.extractBatch) && isExtractable(item.name)) {
-        menu.push({ icon: 'unpack', label: '在线解压…', onClick: () => setExtractItem(item) })
+        menu.push({ icon: 'unpack', label: t('在线解压…'), onClick: () => setExtractItem(item) })
       }
     }
-    menu.push({ icon: 'folderMove', label: '移动到…', onClick: () => setMoveItems([item]) })
-    menu.push({ icon: 'edit', label: '重命名', onClick: () => setRenameItem(item) })
+    menu.push({ icon: 'folderMove', label: t('移动到…'), onClick: () => setMoveItems([item]) })
+    menu.push({ icon: 'edit', label: t('重命名'), onClick: () => setRenameItem(item) })
     menu.push({ sep: true })
     menu.push({
       icon: 'trash',
-      label: item.isDir ? '删除文件夹' : '删除文件',
+      label: item.isDir ? t('删除文件夹') : t('删除文件'),
       danger: true,
       onClick: () => askDelete([item]),
     })
@@ -357,13 +360,13 @@ export default function Explorer({ route }) {
       x,
       y,
       items: [
-        { icon: 'upload', label: '上传文件', onClick: () => fileInput.current?.click() },
-        { icon: 'folderPlus', label: '新建文件夹', onClick: () => setCreatingFolder(true) },
+        { icon: 'upload', label: t('上传文件'), onClick: () => fileInput.current?.click() },
+        { icon: 'folderPlus', label: t('新建文件夹'), onClick: () => setCreatingFolder(true) },
         ...(caps?.offlineDownload
           ? [
               {
                 icon: 'download',
-                label: '离线下载',
+                label: t('离线下载'),
                 onClick: () => {
                   setDownloadTarget({ bucket, prefix })
                   setDownloadModalOpen(true)
@@ -372,8 +375,8 @@ export default function Explorer({ route }) {
             ]
           : []),
         { sep: true },
-        { icon: 'check', label: allSelected ? '取消全选' : '全选', onClick: toggleAll },
-        { icon: 'refresh', label: '刷新', onClick: refresh },
+        { icon: 'check', label: allSelected ? t('取消全选') : t('全选'), onClick: toggleAll },
+        { icon: 'refresh', label: t('刷新'), onClick: refresh },
       ],
     })
   }
@@ -523,10 +526,10 @@ export default function Explorer({ route }) {
   }, [allPaths])
 
   if (loading && !data) {
-    return <div className="py-24 text-center text-[14px] text-ink2">加载中…</div>
+    return <div className="py-24 text-center text-[14px] text-ink2">{t('加载中…')}</div>
   }
   if (error) {
-    return <div className="py-24 text-center text-[14px] text-danger">加载失败：{error}</div>
+    return <div className="py-24 text-center text-[14px] text-danger">{t('加载失败：') + error}</div>
   }
   if (!data) return null
 
@@ -568,14 +571,14 @@ export default function Explorer({ route }) {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           className="input h-9 flex-1 min-w-[140px] py-0"
-          placeholder="搜索当前目录…"
+          placeholder={t('搜索当前目录…')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <select className="select h-9 py-0" value={sort} onChange={(e) => setSort(e.target.value)}>
           {SORTS.map((s) => (
             <option key={s.value} value={s.value}>
-              {s.label}
+              {t(SORT_LABELS[s.value])}
             </option>
           ))}
         </select>
@@ -584,7 +587,7 @@ export default function Explorer({ route }) {
             className={`flex h-full w-9 items-center justify-center transition-colors ${
               viewMode === 'list' ? 'bg-accent-soft text-accent' : 'text-ink2 hover:bg-ink/[0.05] hover:text-ink'
             }`}
-            title="列表视图"
+            title={t('列表视图')}
             onClick={() => switchView('list')}
           >
             <UIcon name="list" size={15} />
@@ -593,35 +596,35 @@ export default function Explorer({ route }) {
             className={`flex h-full w-9 items-center justify-center transition-colors ${
               viewMode === 'grid' ? 'bg-accent-soft text-accent' : 'text-ink2 hover:bg-ink/[0.05] hover:text-ink'
             }`}
-            title="网格视图（图片/视频显示缩略图）"
+            title={t('网格视图（图片/视频显示缩略图）')}
             onClick={() => switchView('grid')}
           >
             <UIcon name="grid" size={15} />
           </button>
         </div>
-        <button className="btn-plain h-9" title="全局搜索（Ctrl+K）" onClick={() => setSearching(true)}>
+        <button className="btn-plain h-9" title={t('全局搜索（Ctrl+K）')} onClick={() => setSearching(true)}>
           <UIcon name="search" size={15} />
-          全局搜索
+          {t('全局搜索')}
         </button>
         <button className="btn-plain h-9" onClick={() => setCreatingFolder(true)}>
           <UIcon name="folderPlus" size={15} />
-          新建文件夹
+          {t('新建文件夹')}
         </button>
         <button className="btn-primary h-9" onClick={() => fileInput.current?.click()}>
           <UIcon name="upload" size={15} />
-          上传
+          {t('上传')}
         </button>
         {caps?.offlineDownload && (
           <button
             className="btn-plain h-9"
-            title="粘贴链接，服务器后台下载后转存到当前目录"
+            title={t('粘贴链接，服务器后台下载后转存到当前目录')}
             onClick={() => {
               setDownloadTarget({ bucket, prefix })
               setDownloadModalOpen(true)
             }}
           >
             <UIcon name="download" size={15} />
-            离线下载
+            {t('离线下载')}
           </button>
         )}
         <input
@@ -639,7 +642,7 @@ export default function Explorer({ route }) {
       {data.truncated && (
         <div className="mb-2 flex items-center gap-1.5 text-[12px] text-ink2">
           <UIcon name="alert" size={13} />
-          目录对象超过 1000 个，仅显示前 1000 项
+          {t('目录对象超过 1000 个，仅显示前 1000 项')}
         </div>
       )}
 
@@ -648,8 +651,8 @@ export default function Explorer({ route }) {
         {empty ? (
           <div className="card flex flex-col items-center px-6 py-16 text-center text-[14px] text-ink2">
             <FIcon type="folder" size={56} />
-            <div className="mt-3">这个目录是空的</div>
-            <div className="mt-1 text-[13px] text-ink2/70">拖拽文件到这里，或点击上方「上传」</div>
+            <div className="mt-3">{t('这个目录是空的')}</div>
+            <div className="mt-1 text-[13px] text-ink2/70">{t('拖拽文件到这里，或点击上方「上传」')}</div>
           </div>
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
@@ -730,7 +733,7 @@ export default function Explorer({ route }) {
         <div className="fade-in pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-accent-soft/80">
           <div className="flex items-center gap-2 text-[15px] font-medium text-accent">
             <UIcon name="upload" size={18} />
-            松开上传到当前目录
+            {t('松开上传到当前目录')}
           </div>
         </div>
       )}
@@ -741,10 +744,10 @@ export default function Explorer({ route }) {
           className="pop-in fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#1e222b] py-2 pl-5 pr-2 text-white shadow-[0_10px_36px_rgba(0,0,0,.35)]"
           style={{ bottom: playerVisible ? 92 : 20 }}
         >
-          <span className="text-[13px] font-medium">已选 {selected.size} 项</span>
+          <span className="text-[13px] font-medium">{t('已选 {n} 项', { n: selected.size })}</span>
           <span className="mx-1 h-4 w-px bg-white/20" />
           <button className="rounded-full px-3 py-1.5 text-[13px] hover:bg-white/10" onClick={toggleAll}>
-            {allSelected ? '取消全选' : '全选'}
+            {allSelected ? t('取消全选') : t('全选')}
           </button>
           <button
             className="rounded-full px-3 py-1.5 text-[13px] hover:bg-white/10"
@@ -755,18 +758,18 @@ export default function Explorer({ route }) {
               setMoveItems(selectedItems)
             }}
           >
-            移动
+            {t('移动')}
           </button>
           <button
             className="rounded-full bg-danger px-3 py-1.5 text-[13px] font-medium hover:brightness-110"
             onClick={() => askDelete(selectedItems)}
           >
-            删除
+            {t('删除')}
           </button>
           <button
             className="icon-btn text-white/70 hover:bg-white/10 hover:text-white"
             onClick={() => setSelected(new Set())}
-            title="取消选择"
+            title={t('取消选择')}
           >
             <UIcon name="close" size={15} />
           </button>
@@ -859,13 +862,13 @@ function DirRow({ d, selected, anySelected, onToggle, onOpen, onRename, onDelete
         checked={selected}
         onClick={(e) => e.stopPropagation()}
         onChange={onToggle}
-        title="选择"
+        title={t('选择')}
       />
       <FIcon type="folder" size={30} />
       <div className="min-w-0 flex-1 truncate text-[14px] font-medium">{d.name}</div>
       <div className="hidden shrink-0 items-center gap-1 sm:flex">
-        <RowAction title="重命名" icon="edit" onClick={onRename} />
-        <RowAction title="删除文件夹" icon="trash" onClick={onDelete} danger />
+        <RowAction title={t('重命名')} icon="edit" onClick={onRename} />
+        <RowAction title={t('删除文件夹')} icon="trash" onClick={onDelete} danger />
       </div>
     </div>
   )
@@ -889,7 +892,7 @@ function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onQr, onR
         checked={selected}
         onClick={(e) => e.stopPropagation()}
         onChange={onToggle}
-        title="选择"
+        title={t('选择')}
       />
       <FIcon type={type} size={30} />
       <div className="min-w-0 flex-1 truncate text-[14px]" title={f.name}>
@@ -898,10 +901,10 @@ function FileRow({ f, selected, anySelected, onToggle, onOpen, onCopy, onQr, onR
       <div className="hidden w-24 shrink-0 text-right text-[12.5px] tabular-nums text-ink2 sm:block">{f.sizeText}</div>
       <div className="hidden w-32 shrink-0 text-right text-[12.5px] text-ink2/80 lg:block">{fmtTime(f.modified)}</div>
       <div className="flex shrink-0 items-center gap-0.5 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
-        <RowAction title="复制直链" icon="copy" onClick={onCopy} />
-        <RowAction title="生成二维码（手机扫码打开）" icon="qr" onClick={onQr} />
-        <RowAction title="重命名" icon="edit" onClick={onRename} />
-        <RowAction title="删除文件" icon="trash" onClick={onDelete} danger />
+        <RowAction title={t('复制直链')} icon="copy" onClick={onCopy} />
+        <RowAction title={t('生成二维码（手机扫码打开）')} icon="qr" onClick={onQr} />
+        <RowAction title={t('重命名')} icon="edit" onClick={onRename} />
+        <RowAction title={t('删除文件')} icon="trash" onClick={onDelete} danger />
       </div>
     </div>
   )

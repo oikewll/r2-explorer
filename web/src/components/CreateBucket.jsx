@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import Modal from './Modal'
 
 export default function CreateBucket({ onClose, onCreated }) {
+  const t = useT()
   const toast = useStore((s) => s.toast)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -16,7 +18,7 @@ export default function CreateBucket({ onClose, onCreated }) {
     setError('')
     try {
       await api('/api/buckets', { method: 'POST', body: JSON.stringify({ name }) })
-      toast('已创建存储桶：' + name)
+      toast(t('已创建存储桶：') + name)
       onCreated(name)
       onClose()
     } catch (e) {
@@ -26,7 +28,7 @@ export default function CreateBucket({ onClose, onCreated }) {
   }
 
   return (
-    <Modal title="新建存储桶" onClose={onClose} width="max-w-[400px]">
+    <Modal title={t('新建存储桶')} onClose={onClose} width="max-w-[400px]">
       <div className="px-5 py-5">
         <input
           className="input font-mono text-[13px]"
@@ -37,15 +39,15 @@ export default function CreateBucket({ onClose, onCreated }) {
           onKeyDown={(e) => e.key === 'Enter' && valid && submit()}
         />
         <div className="mt-2 text-[12px] leading-relaxed text-ink2">
-          仅小写字母、数字和连字符（-），3–63 个字符，字母或数字开头结尾
+          {t('仅小写字母、数字和连字符（-），3–63 个字符，字母或数字开头结尾')}
         </div>
         <div className="mt-1.5 min-h-[18px] text-[13px] text-danger">{error}</div>
         <div className="flex justify-end gap-2">
           <button className="btn-plain" onClick={onClose} disabled={busy}>
-            取消
+            {t('取消')}
           </button>
           <button className="btn-primary" onClick={submit} disabled={busy || !valid}>
-            {busy ? '创建中…' : '创建'}
+            {busy ? t('创建中…') : t('创建')}
           </button>
         </div>
       </div>

@@ -11,8 +11,10 @@ import {
 } from '../lib/player'
 import { UIcon, FIcon } from './icons'
 import SeekBar from './SeekBar'
+import { t, useT } from '../lib/i18n'
 
 export default function MiniPlayer() {
+  const t = useT()
   const player = useStore((s) => s.player)
   const track = player.queue[player.index]
 
@@ -29,51 +31,51 @@ export default function MiniPlayer() {
           <button
             className={`disc transition-transform duration-200 hover:scale-105 ${player.playing ? 'disc-spinning' : ''}`}
             onClick={openFullscreen}
-            title="打开播放页"
+            title={t('打开播放页')}
           >
             <FIcon type="audio" size={34} />
           </button>
 
-          <button className="min-w-0 flex-1 text-left" onClick={openFullscreen} title="打开播放页">
+          <button className="min-w-0 flex-1 text-left" onClick={openFullscreen} title={t('打开播放页')}>
             <div className="truncate text-[13.5px] font-medium leading-tight" title={track.name}>
               {track.name}
             </div>
             <div className="mt-0.5 truncate text-[11.5px] tabular-nums text-ink2/80">
               {fmtTimeSec(player.currentTime)} / {player.duration ? fmtTimeSec(player.duration) : '--:--'}
               <span className="max-sm:hidden"> · {track.bucket}</span>
-              {player.restored && <span className="text-accent/80"> · 点播放继续</span>}
+              {player.restored && <span className="text-accent/80"> · {t('点播放继续')}</span>}
             </div>
           </button>
 
           {/* 控制 */}
           <div className="flex shrink-0 items-center gap-0.5">
-            <button className="icon-btn h-8 w-8" onClick={prev} title="上一首">
+            <button className="icon-btn h-8 w-8" onClick={prev} title={t('上一首')}>
               <UIcon name="prev" size={16} />
             </button>
             <button
               className="mx-0.5 flex h-10 w-10 items-center justify-center rounded-full bg-accent text-white shadow-[0_2px_10px_rgba(79,110,247,.4)] transition hover:brightness-105 active:scale-95"
               onClick={togglePlay}
-              title={player.playing ? '暂停' : '播放'}
+              title={player.playing ? t('暂停') : t('播放')}
             >
               <UIcon name={player.playing ? 'pause' : 'play'} size={18} />
             </button>
-            <button className="icon-btn h-8 w-8" onClick={() => next(false)} title="下一首">
+            <button className="icon-btn h-8 w-8" onClick={() => next(false)} title={t('下一首')}>
               <UIcon name="next" size={16} />
             </button>
-            <button className="icon-btn h-8 w-8 max-sm:hidden" onClick={() => setMode(nextMode.value)} title={mode.title}>
+            <button className="icon-btn h-8 w-8 max-sm:hidden" onClick={() => setMode(nextMode.value)} title={t(mode.title)}>
               <UIcon name={mode.icon} size={16} />
             </button>
             <button
               className="icon-btn h-8 w-8 max-sm:hidden"
               onClick={openFullscreen}
-              title="播放页（歌词 / 队列）"
+              title={t('播放页（歌词 / 队列）')}
             >
               <UIcon name="expand" size={16} />
             </button>
             <button
               className="icon-btn h-8 w-8 text-ink2/70 hover:text-danger hover:!bg-danger-soft"
               onClick={closePlayer}
-              title="关闭播放器"
+              title={t('关闭播放器')}
             >
               <UIcon name="close" size={15} />
             </button>

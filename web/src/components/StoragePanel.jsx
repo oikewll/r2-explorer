@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { fmtNum, fmtSize } from '../lib/format'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { FIcon } from './icons'
 
 // 套餐：free（免费版）/ paid（付费版）/ unknown（未配置 CF API Token）
@@ -114,10 +115,10 @@ function Donut({ byType, total, loading }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {loading ? (
-          <div className="text-[12px] text-ink2">统计中…</div>
+          <div className="text-[12px] text-ink2">{t('统计中…')}</div>
         ) : (
           <>
-            <div className="text-[11px] text-ink2">已用空间</div>
+            <div className="text-[11px] text-ink2">{t('已用空间')}</div>
             <div className="mt-0.5 text-[17px] font-semibold leading-tight">{fmtSize(total)}</div>
           </>
         )}
@@ -127,6 +128,7 @@ function Donut({ byType, total, loading }) {
 }
 
 export default function StoragePanel({ buckets }) {
+  const t = useT()
   const { data, pending, failed } = useAggregatedStats(buckets)
   const activeId = useStore((s) => s.activeId)
   const accounts = useStore((s) => s.accounts)
@@ -140,9 +142,9 @@ export default function StoragePanel({ buckets }) {
   // 套餐徽标文案
   const planBadge =
     plan?.plan === 'free'
-      ? { text: '免费版', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' }
+      ? { text: t('免费版'), cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' }
       : plan?.plan === 'paid'
-        ? { text: '付费版', cls: 'bg-accent-soft text-accent' }
+        ? { text: t('付费版'), cls: 'bg-accent-soft text-accent' }
         : null
 
   return (
@@ -156,7 +158,7 @@ export default function StoragePanel({ buckets }) {
       {buckets.length === 0 ? (
         <div className="flex flex-col items-center py-10 text-[13px] text-ink2">
           <FIcon type="bucket" size={44} />
-          <div className="mt-3">还没有存储桶</div>
+          <div className="mt-3">{t('还没有存储桶')}</div>
         </div>
       ) : (
         <>
@@ -165,8 +167,8 @@ export default function StoragePanel({ buckets }) {
           </div>
 
           <div className="mt-2 text-center text-[12px] text-ink2">
-            共 {loading ? '…' : fmtNum(data.objects)} 个文件
-            {hasFail && <span className="ml-1 text-danger">（{failed.current.size} 个桶统计失败）</span>}
+            {t('共 {n} 个文件', { n: loading ? '…' : fmtNum(data.objects) })}
+            {hasFail && <span className="ml-1 text-danger">{t('（{n} 个桶统计失败）', { n: failed.current.size })}</span>}
           </div>
 
           <div className="mt-4 space-y-3.5">
@@ -177,8 +179,8 @@ export default function StoragePanel({ buckets }) {
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />
-                      <span className="text-[13px] font-medium">{r.name}</span>
-                      <span className="truncate text-[12px] text-ink2">{r.count ? fmtNum(r.count) + ' 个' : ''}</span>
+                      <span className="text-[13px] font-medium">{t(r.name)}</span>
+                      <span className="truncate text-[12px] text-ink2">{r.count ? t('{n} 个', { n: fmtNum(r.count) }) : ''}</span>
                     </div>
                     <span className="shrink-0 text-[12px] text-ink2">{r.size ? fmtSize(r.size) : ''}</span>
                   </div>

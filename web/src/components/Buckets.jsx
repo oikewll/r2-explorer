@@ -4,6 +4,7 @@ import { fmtNum, fmtTime } from '../lib/format'
 import { navigate } from '../lib/hash'
 import { loadAccountsAndBuckets } from '../lib/loader'
 import { useStore } from '../lib/store'
+import { t, useT } from '../lib/i18n'
 import { FIcon, UIcon } from './icons'
 import DeleteBucket from './DeleteBucket'
 import StoragePanel from './StoragePanel'
@@ -35,8 +36,8 @@ function BucketCard({ bucket, index, onDelete }) {
       onKeyDown={(e) => e.key === 'Enter' && navigate(bucket.name, '')}
     >
       <button
-        title="删除存储桶"
-        aria-label={'删除存储桶 ' + bucket.name}
+        title={t('删除存储桶')}
+        aria-label={t('删除存储桶') + ' ' + bucket.name}
         className="absolute right-3 top-3 rounded-lg p-1.5 text-ink2/50 opacity-0 transition-all hover:bg-danger-soft hover:text-danger focus:opacity-100 group-hover:opacity-100 max-sm:opacity-60"
         onClick={(e) => {
           e.stopPropagation()
@@ -50,17 +51,18 @@ function BucketCard({ bucket, index, onDelete }) {
         <div className="truncate font-medium text-[15px] group-hover:text-accent transition-colors">{bucket.name}</div>
       </div>
       <div className="mt-4 flex items-baseline justify-between text-[13px] text-ink2">
-        <span>{stats ? fmtNum(stats.objects) + ' 个对象' : '统计中…'}</span>
+        <span>{stats ? t('{n} 个对象', { n: fmtNum(stats.objects) }) : t('统计中…')}</span>
         <span className="font-medium text-ink">{stats ? stats.sizeText : ''}</span>
       </div>
       <div className="mt-1 text-[12px] text-ink2/70">
-        {failed.current ? '统计失败' : stats ? (stats.modifiedText ? '更新 ' + fmtTime(stats.lastModified) : '空桶') : ''}
+        {failed.current ? t('统计失败') : stats ? (stats.modifiedText ? t('更新于') + ' ' + fmtTime(stats.lastModified) : t('空桶')) : ''}
       </div>
     </div>
   )
 }
 
 export default function Buckets() {
+  const t = useT()
   const buckets = useStore((s) => s.buckets)
   const setCreateBucketOpen = useStore((s) => s.setCreateBucketOpen)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -71,8 +73,8 @@ export default function Buckets() {
       <aside className="w-full shrink-0 lg:w-[300px]">
         {/* 两栏标题行统一 min-h（=btn-primary 高度 37px），保证标题基线与下方卡片顶边对齐 */}
         <div className="mb-4 flex min-h-[37px] items-center justify-between">
-          <h2 className="text-[17px] font-semibold">存储总览</h2>
-          <span className="text-[13px] text-ink2">{buckets.length ? buckets.length + ' 个存储桶' : ''}</span>
+          <h2 className="text-[17px] font-semibold">{t('存储总览')}</h2>
+          <span className="text-[13px] text-ink2">{buckets.length ? t('{n} 个存储桶', { n: buckets.length }) : ''}</span>
         </div>
         <StoragePanel buckets={buckets} />
         {/* 页脚：跟随左栏，左对齐 */}
@@ -82,19 +84,19 @@ export default function Buckets() {
       {/* 右栏：存储桶列表 */}
       <div className="min-w-0 flex-1">
         <div className="mb-4 flex min-h-[37px] items-center justify-between">
-          <h1 className="text-[17px] font-semibold">存储桶</h1>
+          <h1 className="text-[17px] font-semibold">{t('存储桶')}</h1>
           <button className="btn-primary" onClick={() => setCreateBucketOpen(true)}>
             <UIcon name="plus" size={15} />
-            新建存储桶
+            {t('新建存储桶')}
           </button>
         </div>
         {buckets.length === 0 ? (
           <div className="card flex flex-col items-center px-6 py-16 text-center text-[14px] text-ink2">
             <FIcon type="bucket" size={56} />
             <div className="mt-3 leading-relaxed">
-              账号下没有找到 R2 存储桶
+              {t('账号下没有找到 R2 存储桶')}
               <br />
-              点击右上角「新建存储桶」创建一个
+              {t('点击右上角「新建存储桶」创建一个')}
             </div>
           </div>
         ) : (
